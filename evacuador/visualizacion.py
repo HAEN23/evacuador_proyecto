@@ -66,24 +66,43 @@ def graficar(esc: Escenario, res: Resultado) -> None:
     try:
         import matplotlib.pyplot as plt
         import numpy as np
+        import matplotlib.patches as mpatches
     except ImportError:
         print("Para el gráfico instale: pip install matplotlib numpy")
         return
+
+    plt.figure(figsize=(12, 7))
     datos = np.array(esc.grid, dtype=float)
     datos[datos == BLOQUEADA] = np.nan
     cmap = plt.cm.YlOrRd.copy()
     cmap.set_bad("black")
     plt.imshow(datos, cmap=cmap, vmin=1, vmax=99)
-    plt.colorbar(label="Concentración de tóxico (costo)")
+    plt.colorbar(label="Nivel de Riesgo (Concentración de tóxico)", shrink=0.85)
+
+    plt.grid(which="major", color="black", linestyle="-", linewidth=0.5, alpha=0.3)
+    plt.xticks(np.arange(-0.5, esc.columnas, 1), [])
+    plt.yticks(np.arange(-0.5, esc.filas, 1), [])
+
     if res.explorados:
         plt.scatter([c for _, c in res.explorados], [r for r, _ in res.explorados],
-                    c="deepskyblue", s=12, alpha=0.6, label="Explorada")
+                    c="cyan", s=25, alpha=0.6, label="Área Explorada (UCS)")
     if res.ruta:
         plt.plot([c for _, c in res.ruta], [r for r, _ in res.ruta],
-                 "b-", lw=2, label="Ruta UCS")
-    plt.scatter(esc.inicio[1], esc.inicio[0], c="green", s=120, label="Inicio", zorder=3)
+                 "w-", lw=5, zorder=2)
+        plt.plot([c for _, c in res.ruta], [r for r, _ in res.ruta],
+                 "b-", lw=2.5, label="Ruta Óptima de Escape", zorder=3)
+
+    plt.scatter(esc.inicio[1], esc.inicio[0], c="lime", edgecolors="black",
+                s=150, label="Punto de Inicio", zorder=4)
     for r, c in esc.metas:
-        plt.scatter(c, r, c="blue", marker="*", s=200, label="Salida", zorder=3)
-    plt.legend(loc="upper right")
-    plt.title("Ruta de evacuación de menor riesgo acumulado")
+        plt.scatter(c, r, c="fuchsia", edgecolors="black", marker="*", s=300,
+                    label="Salida de Emergencia", zorder=4)
+
+    parche_bloqueo = mpatches.Patch(color="black", label="Celdas Bloqueadas (Fuego / Pared)")
+    handles, _ = plt.gca().get_legend_handles_labels()
+    handles.append(parche_bloqueo)
+    plt.legend(handles=handles, loc="upper right", framealpha=0.9, edgecolor="black", fontsize=10)
+    plt.title("Sistema de Evacuación Táctica - Ruta de Menor Riesgo Acumulado",
+              fontsize=15, fontweight="bold")
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
