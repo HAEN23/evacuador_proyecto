@@ -3,8 +3,8 @@
 Planificación de rutas de evacuación de menor riesgo acumulado en una planta
 industrial modelada como cuadrícula estática, usando Búsqueda de Costo Uniforme (UCS).
 
-**Integrantes:** _(nombres)_  
-**Materia:** Inteligencia Artificial
+**Integrantes:** Heber Alexander Escobar Nuricumbo, Edy Jordan González Abarca  
+**Materia:** Fundamentos De Inteligencia Artificial
 
 ## Modelo
 
