@@ -1,7 +1,7 @@
 """Interfaz gráfica del Sistema de Evacuación Táctica.
 
 Este módulo implementa la ventana principal de escritorio (``tkinter``/``ttk``)
-del Planificador de Evacuación Segura. Todo el trabajo ocurre en una sola
+del Planificador de Evacuación Táctica. Todo el trabajo ocurre en una sola
 ventana que alterna entre tres vistas:
 
 * Inicio: acceso a las acciones principales y referencia del modelo.
@@ -18,21 +18,19 @@ from __future__ import annotations
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from tkinter import font as tkfont
 from tkinter import ttk
-from typing import Callable, Final, Optional
+from typing import Final, Optional
 
-from .io_csv import cargar_csv
-from .modelos import Escenario, Resultado
-from .ucs import buscar_ucs as resolver
-from .visualizacion import graficar
+from ..config import NOMBRE_SISTEMA
+from ..io_csv import cargar_csv
+from ..modelos import Escenario, Resultado
+from ..ucs import buscar_ucs
+from .editor import EditorEscenarios
+from .resultado import VistaResultado
+from .tema import (ANCHO_TEXTO, COLORES, configurar_estilos, elegir_fuente,
+                   muestra_color, muestra_degradado)
 
-
-# ---------------------------------------------------------------------------
-# Constantes de presentación
-# ---------------------------------------------------------------------------
-
-TITULO_APP: Final[str] = "Sistema de Evacuación Táctica"
+TITULO_APP: Final[str] = NOMBRE_SISTEMA
 SUBTITULO_APP: Final[str] = (
     "Planificación de rutas de evacuación seguras mediante "
     "Búsqueda de Costo Uniforme"
@@ -40,145 +38,6 @@ SUBTITULO_APP: Final[str] = (
 VERSION_APP: Final[str] = "1.0.0"
 INSTITUCION: Final[str] = "Universidad Politécnica de Chiapas"
 ASIGNATURA: Final[str] = "Fundamentos de Inteligencia Artificial"
-
-COLORES: Final[dict[str, str]] = {
-    "fondo": "#F3F5F8",
-    "superficie": "#FFFFFF",
-    "borde": "#D9DFE7",
-    "primario": "#14304F",
-    "primario_hover": "#0F2540",
-    "primario_presionado": "#0A1B30",
-    "acento": "#C8102E",
-    "texto": "#1E2A38",
-    "texto_secundario": "#5B6B7D",
-    "texto_tenue": "#8593A3",
-    "texto_invertido": "#FFFFFF",
-    "texto_invertido_suave": "#B8C7D9",
-    "secundario": "#EEF2F6",
-    "secundario_hover": "#E1E7EE",
-    "exito": "#2E7D32",
-    "error": "#B3261E",
-    "celda_bloqueada": "#2E3640",
-    "celda_libre": "#FFFFFF",
-    "riesgo_bajo": "#F6D365",
-    "riesgo_alto": "#B3261E",
-}
-
-FUENTES_PREFERIDAS: Final[tuple[str, ...]] = (
-    "Segoe UI", "SF Pro Text", "Helvetica Neue", "Inter",
-    "Roboto", "Ubuntu", "DejaVu Sans", "Arial",
-)
-
-ANCHO_TEXTO: Final[int] = 440
-"""Ancho máximo (en píxeles) de los párrafos dentro de los paneles."""
-
-# Firma de la función que muestra un escenario resuelto: (escenario, resultado, nombre).
-Presentador = Callable[[Escenario, Resultado, str], None]
-
-# Firma de la función que recibe notificaciones del procesamiento:
-# (estado, nombre_de_archivo). Los estados válidos son "procesando",
-# "completado" y "error".
-Notificador = Callable[[str, str], None]
-
-
-# ---------------------------------------------------------------------------
-# Acciones del sistema
-# ---------------------------------------------------------------------------
-
-def abrir_explorador_archivos(notificar: Optional[Notificador] = None,
-                              mostrar: Optional[Presentador] = None) -> None:
-    """Solicita un escenario CSV, calcula la ruta óptima y la visualiza.
-
-    Args:
-        notificar: Función opcional que recibe el estado del procesamiento
-            (``"procesando"``, ``"completado"`` o ``"error"``) y el nombre
-            del archivo seleccionado. Permite a la interfaz reflejar el
-            progreso sin acoplar esta función a un widget concreto.
-        mostrar: Función que presenta el resultado. Si se omite, se usa
-            :func:`visualizacion.graficar` en una ventana independiente.
-    """
-    ruta_archivo = filedialog.askopenfilename(
-        title="Seleccionar escenario CSV",
-        filetypes=[("Archivos CSV", "*.csv"), ("Todos los archivos", "*.*")],
-    )
-    if not ruta_archivo:
-        return
-
-    nombre = os.path.basename(ruta_archivo)
-    if notificar:
-        notificar("procesando", nombre)
-
-    try:
-        esc = cargar_csv(ruta_archivo)
-        res = resolver(esc)
-    except Exception as e:
-        if notificar:
-            notificar("error", nombre)
-        messagebox.showerror(
-            "Error al procesar el escenario",
-            f"No fue posible procesar el archivo «{nombre}».\n\n"
-            f"Detalle técnico: {e}\n\n"
-            "Verifique que el archivo cumpla con el formato descrito en "
-            "Ayuda › Formato del escenario CSV.",
-        )
-        return
-
-    if notificar:
-        notificar("completado", nombre)
-    if mostrar:
-        mostrar(esc, res, nombre)
-    else:
-        graficar(esc, res)
-
-
-def abrir_creador_escenarios() -> None:
-    """Muestra la vista del editor de escenarios en la ventana principal."""
-    if _aplicacion is not None:
-        _aplicacion.mostrar_editor()
-
-
-_aplicacion: Optional["AplicacionEvacuacion"] = None
-"""Instancia activa de la ventana principal (una por proceso)."""
-
-
-# ---------------------------------------------------------------------------
-# Utilidades gráficas
-# ---------------------------------------------------------------------------
-
-def _elegir_fuente() -> str:
-    """Devuelve la primera familia tipográfica disponible en el sistema."""
-    disponibles = set(tkfont.families())
-    for familia in FUENTES_PREFERIDAS:
-        if familia in disponibles:
-            return familia
-    return "TkDefaultFont"
-
-
-def _hex_a_rgb(color: str) -> tuple[int, int, int]:
-    """Convierte un color ``#RRGGBB`` en una tupla ``(r, g, b)``."""
-    return int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-
-
-def _muestra_color(padre: tk.Misc, color: str, ancho: int = 28, alto: int = 18) -> tk.Canvas:
-    """Crea un recuadro de color sólido para la leyenda."""
-    lienzo = tk.Canvas(padre, width=ancho, height=alto, bg=COLORES["superficie"],
-                       highlightthickness=0, bd=0)
-    lienzo.create_rectangle(1, 1, ancho - 1, alto - 1, fill=color, outline=COLORES["borde"])
-    return lienzo
-
-
-def _muestra_degradado(padre: tk.Misc, ancho: int = 28, alto: int = 18) -> tk.Canvas:
-    """Crea un recuadro con degradado de riesgo bajo a riesgo alto."""
-    lienzo = tk.Canvas(padre, width=ancho, height=alto, bg=COLORES["superficie"],
-                       highlightthickness=0, bd=0)
-    inicio = _hex_a_rgb(COLORES["riesgo_bajo"])
-    fin = _hex_a_rgb(COLORES["riesgo_alto"])
-    for x in range(1, ancho - 1):
-        t = (x - 1) / max(ancho - 3, 1)
-        r, g, b = (round(a + (z - a) * t) for a, z in zip(inicio, fin))
-        lienzo.create_line(x, 1, x, alto - 1, fill=f"#{r:02x}{g:02x}{b:02x}")
-    lienzo.create_rectangle(1, 1, ancho - 1, alto - 1, outline=COLORES["borde"])
-    return lienzo
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +59,7 @@ class AplicacionEvacuacion:
 
     def __init__(self, raiz: tk.Tk) -> None:
         self.raiz = raiz
-        self.fuente = _elegir_fuente()
+        self.fuente = elegir_fuente()
 
         self._estado = tk.StringVar(value="Listo")
         self._area: Optional[ttk.Frame] = None
@@ -209,11 +68,8 @@ class AplicacionEvacuacion:
         self._vista_resultado: Optional[ttk.Frame] = None
         self._detalles_encabezado: list[ttk.Label] = []
 
-        global _aplicacion
-        _aplicacion = self
-
         self._configurar_ventana()
-        self._configurar_estilos()
+        configurar_estilos(self.raiz, self.fuente)
         self._crear_menu()
         self._crear_encabezado()
         self._crear_area_trabajo()
@@ -243,66 +99,6 @@ class AplicacionEvacuacion:
                 self.raiz.attributes("-zoomed", True)
             except tk.TclError:
                 pass
-
-    def _configurar_estilos(self) -> None:
-        """Registra los estilos ``ttk`` de la aplicación."""
-        c, f = COLORES, self.fuente
-        estilo = ttk.Style(self.raiz)
-        if "clam" in estilo.theme_names():
-            estilo.theme_use("clam")
-
-        estilo.configure("App.TFrame", background=c["fondo"])
-        estilo.configure("Header.TFrame", background=c["primario"])
-        estilo.configure("Card.TFrame", background=c["superficie"])
-        estilo.configure("Status.TFrame", background=c["superficie"])
-
-        estilo.configure("Eyebrow.TLabel", background=c["primario"],
-                         foreground=c["texto_invertido_suave"], font=(f, 9, "bold"))
-        estilo.configure("HeaderTitle.TLabel", background=c["primario"],
-                         foreground=c["texto_invertido"], font=(f, 22, "bold"))
-        estilo.configure("HeaderSubtitle.TLabel", background=c["primario"],
-                         foreground=c["texto_invertido_suave"], font=(f, 11))
-        estilo.configure("Version.TLabel", background=c["primario"],
-                         foreground=c["texto_invertido_suave"], font=(f, 9))
-
-        estilo.configure("CardEyebrow.TLabel", background=c["superficie"],
-                         foreground=c["acento"], font=(f, 9, "bold"))
-        estilo.configure("SectionTitle.TLabel", background=c["superficie"],
-                         foreground=c["primario"], font=(f, 16, "bold"))
-        estilo.configure("Subsection.TLabel", background=c["superficie"],
-                         foreground=c["primario"], font=(f, 10, "bold"))
-        estilo.configure("Body.TLabel", background=c["superficie"],
-                         foreground=c["texto_secundario"], font=(f, 10))
-        estilo.configure("Term.TLabel", background=c["superficie"],
-                         foreground=c["texto"], font=(f, 10, "bold"))
-        estilo.configure("Hint.TLabel", background=c["superficie"],
-                         foreground=c["texto_tenue"], font=(f, 9))
-        estilo.configure("Status.TLabel", background=c["superficie"],
-                         foreground=c["texto_secundario"], font=(f, 9))
-
-        for nombre, color in (("Exito", c["exito"]), ("Error", c["error"])):
-            estilo.configure(f"{nombre}.Result.TLabel", background=c["superficie"],
-                             foreground=color, font=(f, 11, "bold"))
-
-        estilo.configure("Tool.TRadiobutton", background=c["superficie"],
-                         foreground=c["texto"], font=(f, 10))
-        estilo.map("Tool.TRadiobutton", background=[("active", c["superficie"])])
-
-        estilo.configure("Primary.TButton", font=(f, 11, "bold"), padding=(20, 12),
-                         background=c["primario"], foreground=c["texto_invertido"],
-                         borderwidth=0, focusthickness=0, relief="flat")
-        estilo.map("Primary.TButton",
-                   background=[("pressed", c["primario_presionado"]),
-                               ("active", c["primario_hover"])],
-                   foreground=[("disabled", c["texto_invertido_suave"])])
-
-        estilo.configure("Secondary.TButton", font=(f, 11), padding=(20, 11),
-                         background=c["secundario"], foreground=c["primario"],
-                         bordercolor=c["borde"], borderwidth=1, focusthickness=0,
-                         relief="flat")
-        estilo.map("Secondary.TButton",
-                   background=[("pressed", c["borde"]),
-                               ("active", c["secundario_hover"])])
 
     def _registrar_atajos(self) -> None:
         """Asocia los atajos de teclado a las acciones principales."""
@@ -429,11 +225,11 @@ class AplicacionEvacuacion:
                                                     sticky="w", pady=(4, 16))
 
         leyenda = (
-            (_muestra_color(tarjeta, COLORES["celda_bloqueada"]), "0",
+            (muestra_color(tarjeta, COLORES["celda_bloqueada"]), "0",
              "Celda bloqueada (pared o fuego letal)"),
-            (_muestra_color(tarjeta, COLORES["celda_libre"]), "1",
+            (muestra_color(tarjeta, COLORES["celda_libre"]), "1",
              "Celda libre y sin contaminación"),
-            (_muestra_degradado(tarjeta), "2 – 99",
+            (muestra_degradado(tarjeta), "2 – 99",
              "Humo o tóxico; el valor es el costo de transición"),
         )
         for i, (muestra, valor, descripcion) in enumerate(leyenda, start=2):
@@ -502,25 +298,12 @@ class AplicacionEvacuacion:
                 en curso del editor.
         """
         if self._editor is None:
-            try:
-                # Importación diferida: editor.py reutiliza la paleta de este módulo.
-                from .editor import EditorEscenarios
-                self._editor = EditorEscenarios(
-                    self._area, estado=self._estado,
-                    al_calcular=lambda esc, res: self.mostrar_resultado(
-                        esc, res, "Escenario diseñado en el editor", desde_editor=True),
-                    al_volver=self.mostrar_inicio)
-                self._editor.configure(padding=24)
-            except Exception as e:
-                self._editor = None
-                messagebox.showerror(
-                    "No fue posible abrir el editor",
-                    "Ocurrió un error al iniciar el editor de escenarios.\n\n"
-                    f"Detalle técnico: {type(e).__name__}: {e}\n\n"
-                    "Verifique que editor.py se encuentre en la carpeta evacuador/, "
-                    "junto a app.py.",
-                )
-                return
+            self._editor = EditorEscenarios(
+                self._area, estado=self._estado,
+                al_calcular=lambda esc, res: self.mostrar_resultado(
+                    esc, res, "Escenario diseñado en el editor", desde_editor=True),
+                al_volver=self.mostrar_inicio)
+            self._editor.configure(padding=24)
         if escenario is not None:
             self._editor.cargar_escenario(escenario)
         self._mostrar_vista(self._editor, compacto=True)
@@ -538,14 +321,6 @@ class AplicacionEvacuacion:
             desde_editor: ``True`` si el cálculo se lanzó desde el editor; en
                 ese caso el botón de edición regresa al diseño en curso.
         """
-        try:
-            from .resultado import VistaResultado
-        except Exception as e:
-            messagebox.showerror("No fue posible mostrar el resultado",
-                                 f"Detalle técnico: {type(e).__name__}: {e}\n\n"
-                                 "Verifique que resultado.py se encuentre en la "
-                                 "carpeta evacuador/, junto a app.py.")
-            return
         if self._vista_resultado is not None:
             self._vista_resultado.destroy()
         if desde_editor:
@@ -562,9 +337,28 @@ class AplicacionEvacuacion:
     # -- Acciones de la interfaz -------------------------------------------
 
     def abrir_escenario(self) -> None:
-        """Carga un escenario CSV, lo resuelve y muestra la vista de resultado."""
-        abrir_explorador_archivos(notificar=self._registrar_progreso,
-                                  mostrar=self.mostrar_resultado)
+        """Pide un CSV, calcula la ruta con UCS y muestra la vista de resultado."""
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar escenario CSV",
+            filetypes=[("Archivos CSV", "*.csv"), ("Todos los archivos", "*.*")])
+        if not ruta:
+            return
+        nombre = os.path.basename(ruta)
+        self._registrar_progreso("procesando", nombre)
+        try:
+            escenario = cargar_csv(ruta)
+            resultado = buscar_ucs(escenario)
+        except (ValueError, OSError) as exc:
+            self._registrar_progreso("error", nombre)
+            messagebox.showerror(
+                "Error al procesar el escenario",
+                f"No fue posible procesar el archivo «{nombre}».\n\n"
+                f"Detalle técnico: {exc}\n\n"
+                "Verifique que el archivo cumpla con el formato descrito en "
+                "Ayuda › Formato del escenario CSV.")
+            return
+        self._registrar_progreso("completado", nombre)
+        self.mostrar_resultado(escenario, resultado, nombre)
 
     def _registrar_progreso(self, estado: str, nombre_archivo: str) -> None:
         """Actualiza la barra de estado según el avance del procesamiento.

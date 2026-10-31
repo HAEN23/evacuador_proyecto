@@ -4,7 +4,9 @@ from __future__ import annotations
 import time
 from typing import Iterable
 
-from .config import BLOQUEADA, UMBRAL_HUMO
+from .config import (BLOQUEADA, COLOR_ALERTA, COLOR_BLOQUEADA, COLOR_EXPLORADA,
+                     COLOR_INICIO, COLOR_RUTA, COLOR_SALIDA, COSTO_MAX, COSTO_MIN,
+                     UMBRAL_HUMO)
 from .modelos import Escenario, Posicion, Resultado
 
 LEYENDA = ("# bloqueada | . limpia | + humo leve | % humo denso | "
@@ -62,47 +64,71 @@ def animar(esc: Escenario, res: Resultado, pausa: float = 0.05) -> None:
     print("\033[H\033[J", end="")
 
 
+def dibujar_mapa(figura, ejes, esc: Escenario, res: Resultado) -> None:
+    """Dibuja el mapa de riesgo, el área explorada y la ruta sobre unos ejes de matplotlib.
+
+    Es el único lugar donde se dibuja el mapa: lo usan tanto ``graficar`` (ventana
+    independiente) como la vista de resultados de la interfaz gráfica.
+
+    Args:
+        figura: ``Figure`` que contiene los ejes (debe usar diseño "constrained").
+        ejes: ``Axes`` donde se dibuja.
+        esc: Escenario resuelto.
+        res: Resultado de la búsqueda.
+    """
+    import matplotlib.patches as mpatches
+    import numpy as np
+    from matplotlib import colormaps
+    from matplotlib.ticker import MaxNLocator
+
+    datos = np.array(esc.grid, dtype=float)
+    datos[datos == BLOQUEADA] = np.nan
+    mapa = colormaps["YlOrRd"].with_extremes(bad=COLOR_BLOQUEADA)
+    imagen = ejes.imshow(datos, cmap=mapa, vmin=COSTO_MIN, vmax=COSTO_MAX)
+    figura.colorbar(imagen, ax=ejes, label="Concentración de tóxico (costo)", shrink=0.9)
+
+    if res.explorados:
+        ejes.scatter([c for _, c in res.explorados], [r for r, _ in res.explorados],
+                     c=COLOR_EXPLORADA, s=14, alpha=0.6, label="Área explorada (UCS)")
+    if res.ruta:
+        columnas, filas = [c for _, c in res.ruta], [r for r, _ in res.ruta]
+        ejes.plot(columnas, filas, "-", color="white", lw=5, zorder=2)
+        ejes.plot(columnas, filas, "-", color=COLOR_RUTA, lw=2.5, zorder=3,
+                  label="Ruta óptima de escape")
+    ejes.scatter(esc.inicio[1], esc.inicio[0], c=COLOR_INICIO, edgecolors="white",
+                 s=140, zorder=4, label="Punto de inicio")
+    for i, (r, c) in enumerate(esc.metas):
+        ejes.scatter(c, r, c=COLOR_SALIDA, edgecolors="white", marker="*", s=300, zorder=4,
+                     label="Salida de emergencia" if i == 0 else None)
+
+    manejadores, _ = ejes.get_legend_handles_labels()
+    manejadores.append(mpatches.Patch(color=COLOR_BLOQUEADA, label="Bloqueada (fuego / pared)"))
+    figura.legend(handles=manejadores, loc="outside lower center", ncol=3, fontsize=9,
+                  frameon=False)
+
+    ejes.set_title("Ruta de evacuación de menor riesgo acumulado" if res.encontrada
+                   else "Situación crítica: el agente no puede alcanzar ninguna salida",
+                   color=COLOR_RUTA if res.encontrada else COLOR_ALERTA,
+                   fontsize=12, fontweight="bold")
+    ejes.set_xlabel("Columna")
+    ejes.set_ylabel("Fila")
+    ejes.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ejes.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+
+def nueva_figura(facecolor: str = "white"):
+    """Crea una ``Figure`` con diseño "constrained" (compatible con matplotlib 3.7 o superior)."""
+    from matplotlib.figure import Figure
+    return Figure(figsize=(9, 6.5), dpi=100, facecolor=facecolor, layout="constrained")
+
+
 def graficar(esc: Escenario, res: Resultado) -> None:
+    """Muestra el mapa en una ventana de matplotlib."""
     try:
         import matplotlib.pyplot as plt
-        import numpy as np
-        import matplotlib.patches as mpatches
     except ImportError:
         print("Para el gráfico instale: pip install matplotlib numpy")
         return
-
-    plt.figure(figsize=(12, 7))
-    datos = np.array(esc.grid, dtype=float)
-    datos[datos == BLOQUEADA] = np.nan
-    cmap = plt.cm.YlOrRd.copy()
-    cmap.set_bad("black")
-    plt.imshow(datos, cmap=cmap, vmin=1, vmax=99)
-    plt.colorbar(label="Nivel de Riesgo (Concentración de tóxico)", shrink=0.85)
-
-    plt.grid(which="major", color="black", linestyle="-", linewidth=0.5, alpha=0.3)
-    plt.xticks(np.arange(-0.5, esc.columnas, 1), [])
-    plt.yticks(np.arange(-0.5, esc.filas, 1), [])
-
-    if res.explorados:
-        plt.scatter([c for _, c in res.explorados], [r for r, _ in res.explorados],
-                    c="cyan", s=25, alpha=0.6, label="Área Explorada (UCS)")
-    if res.ruta:
-        plt.plot([c for _, c in res.ruta], [r for r, _ in res.ruta],
-                 "w-", lw=5, zorder=2)
-        plt.plot([c for _, c in res.ruta], [r for r, _ in res.ruta],
-                 "b-", lw=2.5, label="Ruta Óptima de Escape", zorder=3)
-
-    plt.scatter(esc.inicio[1], esc.inicio[0], c="lime", edgecolors="black",
-                s=150, label="Punto de Inicio", zorder=4)
-    for r, c in esc.metas:
-        plt.scatter(c, r, c="fuchsia", edgecolors="black", marker="*", s=300,
-                    label="Salida de Emergencia", zorder=4)
-
-    parche_bloqueo = mpatches.Patch(color="black", label="Celdas Bloqueadas (Fuego / Pared)")
-    handles, _ = plt.gca().get_legend_handles_labels()
-    handles.append(parche_bloqueo)
-    plt.legend(handles=handles, loc="upper right", framealpha=0.9, edgecolor="black", fontsize=10)
-    plt.title("Sistema de Evacuación Táctica - Ruta de Menor Riesgo Acumulado",
-              fontsize=15, fontweight="bold")
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    figura = plt.figure(figsize=(11, 7), layout="constrained")
+    dibujar_mapa(figura, figura.add_subplot(111), esc, res)
     plt.show()

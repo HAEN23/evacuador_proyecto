@@ -12,9 +12,9 @@ from tkinter import font as tkfont
 from tkinter import messagebox, ttk
 from typing import Callable, Optional
 
-from .app import COLORES
-from .config import BLOQUEADA
-from .modelos import Escenario, Resultado
+from ..modelos import Escenario, Resultado
+from ..visualizacion import dibujar_mapa, nueva_figura
+from .tema import COLORES
 
 
 class VistaResultado(ttk.Frame):
@@ -132,58 +132,16 @@ class VistaResultado(ttk.Frame):
         interior.pack(fill="both", expand=True, padx=1, pady=1)
 
         try:
-            import numpy as np
-            from matplotlib import colormaps
             from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                            NavigationToolbar2Tk)
-            from matplotlib.figure import Figure
-            from matplotlib.ticker import MaxNLocator
         except ImportError:
             ttk.Label(interior, text="Para visualizar la gráfica instale matplotlib y numpy:\n"
                                      "pip install matplotlib numpy",
                       style="Body.TLabel", justify="center").pack(expand=True)
             return
 
-        esc, res = self._escenario, self._resultado
-        # Diseño "constrained": recalcula márgenes al redimensionar, de modo que
-        # el título y los ejes nunca quedan recortados.
-        try:
-            figura = Figure(figsize=(8, 6), dpi=100, facecolor=COLORES["superficie"],
-                            layout="constrained")
-        except TypeError:  # matplotlib < 3.6
-            figura = Figure(figsize=(8, 6), dpi=100, facecolor=COLORES["superficie"],
-                            constrained_layout=True)
-        ejes = figura.add_subplot(111)
-
-        datos = np.array(esc.grid, dtype=float)
-        datos[datos == BLOQUEADA] = np.nan
-        mapa = colormaps["YlOrRd"].copy()
-        mapa.set_bad(COLORES["celda_bloqueada"])
-        imagen = ejes.imshow(datos, cmap=mapa, vmin=1, vmax=99)
-        figura.colorbar(imagen, ax=ejes, label="Concentración de tóxico (costo)",
-                        shrink=0.9)
-
-        if res.explorados:
-            ejes.scatter([c for _, c in res.explorados], [r for r, _ in res.explorados],
-                         c="deepskyblue", s=12, alpha=0.6, label="Explorada")
-        if res.ruta:
-            ejes.plot([c for _, c in res.ruta], [r for r, _ in res.ruta],
-                      "-", color=COLORES["primario"], lw=2.5, label="Ruta UCS")
-        ejes.scatter(esc.inicio[1], esc.inicio[0], c="#2E7D32", s=120,
-                     label="Inicio", zorder=3)
-        for i, (r, c) in enumerate(esc.metas):
-            ejes.scatter(c, r, c="#1565C0", marker="*", s=220,
-                         label="Salida" if i == 0 else None, zorder=3)
-        ejes.legend(loc="upper right", fontsize=8, framealpha=0.9)
-        titulo = ("Ruta de evacuación de menor riesgo acumulado" if res.encontrada
-                  else "Situación crítica: el agente no puede alcanzar ninguna salida")
-        ejes.set_title(titulo,
-                       color=COLORES["primario"] if res.encontrada else COLORES["error"],
-                       fontsize=12, fontweight="bold", pad=12)
-        ejes.set_xlabel("Columna")
-        ejes.set_ylabel("Fila")
-        ejes.xaxis.set_major_locator(MaxNLocator(integer=True))
-        ejes.yaxis.set_major_locator(MaxNLocator(integer=True))
+        figura = nueva_figura(COLORES["superficie"])
+        dibujar_mapa(figura, figura.add_subplot(111), self._escenario, self._resultado)
 
         lienzo = FigureCanvasTkAgg(figura, master=interior)
         barra = NavigationToolbar2Tk(lienzo, interior, pack_toolbar=False)

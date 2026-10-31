@@ -1,4 +1,4 @@
-"""Sistema de Evacuación Segura: rutas de menor riesgo mediante UCS."""
+"""Sistema de Evacuación Táctica: rutas de menor riesgo mediante UCS."""
 from .modelos import Escenario, Posicion, Resultado
 from .ucs import buscar_ucs
 from .generador import ConfigGenerador, generar_escenario
