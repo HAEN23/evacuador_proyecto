@@ -28,23 +28,32 @@ class VistaResultado(ttk.Frame):
         al_volver: Acción del botón "Volver al inicio".
         al_editar: Acción del botón de edición.
         texto_editar: Texto del botón de edición.
+        al_guardar: Acción del botón «Guardar escenario como CSV…». Si se
+            omite, el botón no se muestra.
     """
 
     def __init__(self, padre: tk.Misc, escenario: Escenario, resultado: Resultado,
                  nombre: str, al_volver: Callable[[], None],
-                 al_editar: Callable[[], None], texto_editar: str) -> None:
+                 al_editar: Callable[[], None], texto_editar: str,
+                 al_guardar: Optional[Callable[[], None]] = None) -> None:
         super().__init__(padre, style="App.TFrame")
         self._escenario = escenario
         self._resultado = resultado
         self._lienzo_mpl: Optional[object] = None
+        self._al_guardar = al_guardar
 
         self.columnconfigure(1, weight=1)
         self.rowconfigure(1, weight=1)
         if not resultado.encontrada:
             self._crear_alerta_critica()
             self.after_idle(self._notificar_situacion_critica)
-        self._crear_panel_metricas(nombre, al_volver, al_editar, texto_editar)
+        self._crear_panel_metricas(nombre, al_volver, al_editar, texto_editar, al_guardar)
         self._crear_grafica()
+
+    def guardar(self) -> None:
+        """Ejecuta la acción de guardado (atajo Ctrl+S), si la vista la ofrece."""
+        if self._al_guardar is not None:
+            self._al_guardar()
 
     # -- Situación crítica -------------------------------------------------
 
@@ -80,7 +89,8 @@ class VistaResultado(ttk.Frame):
     # -- Construcción ------------------------------------------------------
 
     def _crear_panel_metricas(self, nombre: str, al_volver: Callable[[], None],
-                              al_editar: Callable[[], None], texto_editar: str) -> None:
+                              al_editar: Callable[[], None], texto_editar: str,
+                              al_guardar: Optional[Callable[[], None]]) -> None:
         """Panel lateral con el resumen de la búsqueda y la navegación."""
         marco = tk.Frame(self, bg=COLORES["borde"])
         marco.grid(row=1, column=0, sticky="ns", padx=(0, 12))
@@ -120,9 +130,13 @@ class VistaResultado(ttk.Frame):
         ttk.Separator(panel).grid(row=20, column=0, columnspan=2, sticky="ew", pady=16)
         ttk.Button(panel, text=texto_editar, style="Primary.TButton", cursor="hand2",
                    command=al_editar).grid(row=21, column=0, columnspan=2, sticky="ew")
+        if al_guardar is not None:
+            ttk.Button(panel, text="Guardar escenario como CSV… (Ctrl+S)",
+                       style="Secondary.TButton", cursor="hand2", command=al_guardar).grid(
+                row=22, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         ttk.Button(panel, text="Volver al inicio", style="Secondary.TButton",
                    cursor="hand2", command=al_volver).grid(
-            row=22, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+            row=23, column=0, columnspan=2, sticky="ew", pady=(8, 0))
 
     def _crear_grafica(self) -> None:
         """Integra el mapa de riesgo de ``matplotlib`` en la vista."""

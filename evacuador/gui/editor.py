@@ -8,6 +8,7 @@ la salida de emergencia. El escenario resultante puede guardarse en CSV
 
 from __future__ import annotations
 
+import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
@@ -17,9 +18,10 @@ from ..config import (COLOR_INICIO, COLOR_SALIDA, COLUMNAS_POR_DEFECTO, COSTO_MA
                       DIMENSION_MAX, DIMENSION_MIN, FILAS_POR_DEFECTO,
                       NIVEL_HUMO_DEFECTO, UMBRAL_HUMO)
 from ..edicion import DisenoEscenario, DisenoInvalido, Herramienta, limitar_dimension
-from ..io_csv import cargar_csv, guardar_csv
+from ..io_csv import cargar_csv
 from ..modelos import Escenario, Posicion, Resultado
 from ..ucs import buscar_ucs
+from .dialogos import guardar_escenario_como
 from .tema import COLORES, color_celda
 
 
@@ -65,6 +67,8 @@ class EditorEscenarios(ttk.Frame):
         self._herramienta = tk.StringVar(value=Herramienta.BLOQUEADA.value)
         self._nivel_humo = tk.IntVar(value=NIVEL_HUMO_DEFECTO)
         self._estado = estado
+        # Último CSV abierto o guardado; sugiere el nombre en «Guardar como…».
+        self._ruta_archivo: Optional[str] = None
 
         self._tamano_celda = TAMANO_CELDA_MAX
         self._margen_x = self._margen_y = 0
@@ -83,7 +87,6 @@ class EditorEscenarios(ttk.Frame):
         """Atajos de teclado, activos solo mientras el editor está visible."""
         ventana = self.winfo_toplevel()
         atajos = {
-            "<Control-s>": self.guardar,
             "<F5>": self.calcular_ruta,
             "<Control-plus>": self.acercar,
             "<Control-equal>": self.acercar,
@@ -198,7 +201,7 @@ class EditorEscenarios(ttk.Frame):
         # Acciones
         ttk.Button(panel, text="Calcular ruta (F5)", style="Primary.TButton", cursor="hand2",
                    command=self.calcular_ruta).grid(row=15, column=0, sticky="ew")
-        ttk.Button(panel, text="Guardar CSV… (Ctrl+S)", style="Secondary.TButton",
+        ttk.Button(panel, text="Guardar como CSV… (Ctrl+S)", style="Secondary.TButton",
                    cursor="hand2", command=self.guardar).grid(row=16, column=0, sticky="ew",
                                                               pady=(8, 0))
         ttk.Button(panel, text="Abrir CSV para editar…", style="Secondary.TButton",
@@ -332,6 +335,7 @@ class EditorEscenarios(ttk.Frame):
                                  parent=self.winfo_toplevel())
             return
         self._diseno.nueva(filas, columnas)
+        self._ruta_archivo = None
         self._filas.set(filas)
         self._columnas.set(columnas)
         self._dibujar()
@@ -468,21 +472,17 @@ class EditorEscenarios(ttk.Frame):
         self._al_calcular(esc, res)
 
     def guardar(self) -> None:
-        """Guarda el escenario actual como archivo CSV."""
+        """Guarda el escenario actual como archivo CSV («Guardar como…»)."""
         esc = self._construir_escenario()
         if esc is None:
             return
-        ruta = filedialog.asksaveasfilename(
-            parent=self.winfo_toplevel(), title="Guardar escenario", defaultextension=".csv",
-            filetypes=[("Archivos CSV", "*.csv")], initialfile="escenario.csv")
-        if not ruta:
+        nombre = os.path.basename(self._ruta_archivo) if self._ruta_archivo else "escenario_nuevo.csv"
+        ruta = guardar_escenario_como(self, esc, nombre)
+        if ruta is None:
             return
-        try:
-            guardar_csv(ruta, esc)
-        except OSError as e:
-            messagebox.showerror("Error al guardar", f"Detalle técnico: {e}", parent=self.winfo_toplevel())
-            return
-        self._estado.set(f"Escenario guardado en «{ruta}».")
+        self._ruta_archivo = ruta
+        self._estado.set(f"Escenario guardado en «{ruta}». Puede abrirlo luego con "
+                         "Archivo › Abrir escenario.")
 
     def abrir(self) -> None:
         """Carga un escenario CSV existente para editarlo."""
@@ -496,4 +496,5 @@ class EditorEscenarios(ttk.Frame):
         except Exception as e:
             messagebox.showerror("Error al abrir", f"Detalle técnico: {e}", parent=self.winfo_toplevel())
             return
+        self._ruta_archivo = ruta
         self._estado.set(f"Escenario «{ruta}» cargado para edición.")

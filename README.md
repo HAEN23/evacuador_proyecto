@@ -111,6 +111,7 @@ presentación (terminal e interfaz gráfica) que usan el mismo núcleo.
 | `experimentos.py` | Correr UCS en varios escenarios y armar la tabla | Imprimir ni escribir archivos |
 | `cli.py` | Leer argumentos y conectar las piezas | Contener lógica de negocio |
 | `gui/tema.py` | Paleta, tipografía y estilos de la interfaz | Importar otras vistas |
+| `gui/dialogos.py` | Diálogo «Guardar como CSV» compartido por el editor y la vista de resultado | Importar otras vistas |
 | `gui/app.py` | Ventana principal, menús y navegación entre vistas (única que conoce a las demás vistas) | Contener lógica de negocio |
 | `gui/editor.py` | Dibuja el editor y le pasa los clics a `edicion.py` | Decidir qué hace cada herramienta |
 | `gui/resultado.py` | Métricas y marco del mapa (el dibujo lo hace `visualizacion.py`) | Calcular rutas ni dibujar por su cuenta |
@@ -175,7 +176,7 @@ Mensajes de commit claros: `Agrega script de experimentos`, no `cambios`.
 - [x] Modelo de celdas y propuesta (PEAS, entorno, transiciones)
 - [x] Algoritmo UCS con métricas (costo, pasos, celdas de humo, nodos, tiempo)
 - [x] Generador de escenarios con semilla
-- [x] Guardar y cargar escenarios en CSV
+- [x] Guardar y cargar escenarios en CSV (editor, vista de resultado y menú Archivo › Guardar escenario como CSV…, Ctrl+S)
 - [x] Visualización en terminal: ASCII, rastro de casillas exploradas y animación
 - [x] Visualización gráfica (`--grafico`) con matplotlib
 - [x] Pruebas unitarias del núcleo, los experimentos, la lógica del editor, el dibujo del mapa y la arquitectura (39)
