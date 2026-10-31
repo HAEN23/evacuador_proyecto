@@ -1,0 +1,6 @@
+Escenario,Tamaño,Costo,Pasos,Celdas con humo,Nodos expandidos,Tiempo (ms)
+A. Sin humo,12x20,30,30,0,206,0.349
+B. Humo moderado,12x20,437,32,9,139,0.255
+C. Mucho humo,15x25,376,40,11,266,0.464
+D. Mapa grande,40x40,146,90,3,1022,1.906
+E. Sin ruta (aislado),4x4,sin ruta,-,-,8,0.012
