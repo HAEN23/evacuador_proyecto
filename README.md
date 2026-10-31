@@ -16,8 +16,35 @@ Incluye una línea de comandos y una interfaz gráfica de escritorio.
 | 1 | Libre y limpia |
 | 2-99 | Libre con concentración creciente de tóxico |
 
-Costo de moverse a una celda = valor de la celda destino. Movimientos N, S, E, O.
-Ambiente determinista, estático, observable y conocido. UCS no usa heurística.
+Costo de moverse a una celda = valor de la celda destino (la celda de inicio no cuesta).
+Movimientos N, S, E, O, sin diagonales. Hay una celda de inicio y una o más salidas.
+Una celda cuenta "con humo" desde el valor 2 (`UMBRAL_HUMO = 2` en `config.py`).
+
+### PEAS
+
+| | |
+|---|---|
+| **Medida de desempeño** | Minimizar el riesgo acumulado (suma de costos de las celdas recorridas) y completar la evacuación |
+| **Entorno** | Cuadrícula de una planta industrial con paredes, fuego y zonas con humo |
+| **Actuadores** | Moverse al norte, sur, este u oeste |
+| **Sensores** | Conoce el mapa completo y su posición |
+
+**Tipo de entorno:** totalmente observable, determinista, estático (el humo no se
+propaga), discreto, de un solo agente y conocido.
+
+## Algoritmo: Búsqueda de Costo Uniforme (UCS)
+
+- Búsqueda **no informada**: no usa heurística, solo el costo real acumulado g(n).
+- Frontera: cola de prioridad (`heapq`) ordenada por g(n).
+- La prueba de meta se hace **al expandir** el nodo, no al generarlo; por eso la ruta es óptima.
+- Completo y óptimo con costos positivos (aquí todos son ≥ 1).
+- Guarda el mejor g por celda, ignora entradas obsoletas de la cola y reconstruye la ruta con un diccionario de padres.
+- Complejidad en cuadrícula: O(N log N), con N = filas × columnas.
+- Métricas: costo, pasos, celdas con humo atravesadas, nodos expandidos, tiempo en ms y el orden de las celdas exploradas (el "rastro").
+- Si no hay ruta, lo reporta sin fallar e indica cuántos nodos exploró.
+
+UCS **no es un algoritmo genético**: es una búsqueda sistemática y no informada.
+Los algoritmos genéticos son metaheurísticas de optimización, otra familia.
 
 ## Requisitos
 
@@ -49,7 +76,9 @@ python -m evacuador gui
 ```
 
 Permite abrir un escenario CSV, diseñarlo con el editor interactivo (paredes,
-humo, inicio y salida), calcular la ruta y ver el mapa de riesgo con las métricas.
+humo, inicio, salida y zoom), calcular la ruta y ver el mapa de riesgo con las métricas.
+Si no existe ruta, muestra el aviso de **situación crítica**.
+También funciona `python -m evacuador.gui`.
 
 ### Formato CSV
 
@@ -66,6 +95,29 @@ Con varias salidas: `goal=11,19;0,19`.
 python -m unittest discover -s tests -v
 ```
 
+Son **39 pruebas**: UCS (óptimo, sin ruta, varias salidas), modelos, generador y CSV,
+experimentos, lógica del editor, dibujo del mapa y reglas de arquitectura.
+Las 3 pruebas del dibujo del mapa requieren `matplotlib` y `numpy`; sin ellos se
+saltan y solo corren 36. Instale antes `pip install -r requirements.txt` para que
+corran las 39.
+
+## Experimentos
+
+Reproducibles con `python -m evacuador experimentos` (los escenarios usan semilla fija).
+El tiempo depende de la máquina, por eso no se incluye.
+
+| Escenario | Tamaño | Costo | Pasos | Con humo | Nodos expandidos |
+|---|---|---|---|---|---|
+| A. Sin humo | 12x20 | 30 | 30 | 0 | 206 |
+| B. Humo moderado | 12x20 | 437 | 32 | 9 | 139 |
+| C. Mucho humo | 15x25 | 376 | 40 | 11 | 266 |
+| D. Mapa grande | 40x40 | 146 | 90 | 3 | 1022 |
+| E. Sin ruta (aislado) | 4x4 | sin ruta | - | - | 8 |
+
+- En **A** el costo es igual a los pasos, porque todas las celdas cuestan 1.
+- En **B, C y D** el agente rodea el humo: la ruta es más larga en pasos pero de menor riesgo.
+- En **E** el agente está aislado y UCS lo detecta tras explorar solo 8 celdas.
+
 ## Arquitectura
 
 Arquitectura **modular por capas**, con una regla central: **las dependencias
@@ -74,8 +126,8 @@ presentación (terminal e interfaz gráfica) que usan el mismo núcleo.
 
 ```
         ┌────────────────────┐          ┌───────────────────────────────┐
-        │  cli.py            │          │  gui/  app · editor ·         │   Presentación
-        │  (terminal)        │          │  resultado · tema  (tkinter)  │
+        │  cli.py            │          │  gui/  app · editor · result. │   Presentación
+        │  (terminal)        │          │  tema · dialogos  (tkinter)   │
         └─────────┬──────────┘          └───────────────┬───────────────┘
                   │                                     │
                   └──────────────────┬──────────────────┘
@@ -187,18 +239,19 @@ Mensajes de commit claros: `Agrega script de experimentos`, no `cambios`.
 - [x] Script de experimentos (`python -m evacuador experimentos`) y 5 escenarios en `data/`
 - [x] Criterio de humo alineado: `UMBRAL_HUMO = 2` en `config.py`
 - [x] Refactor de la interfaz: subpaquete `gui/`, `tema.py` (sin importaciones circulares), `edicion.py` (lógica del editor sin `tkinter`), `dibujar_mapa` compartido, sin estado global y comando `python -m evacuador gui`
-
-### Pendiente: necesario para la entrega
-- [ ] Informe: PEAS, modelo, algoritmo, experimentos, análisis, limitaciones, conclusiones
-- [ ] Preparar la demo y las diapositivas (usar `--animar` y la interfaz)
-- [ ] Pull Request final de `develop` a `main`
+- [x] Informe: PEAS, modelo, algoritmo, experimentos, análisis, limitaciones, conclusiones
+- [x] Pull Request final de `develop` a `main`
 
 ### Limitaciones conocidas (para el informe)
 - El ambiente es **estático**: el humo no se propaga durante la evacuación.
 - El costo es **lineal** respecto a la concentración de tóxico; es una decisión de modelado.
 - El generador coloca inicio y salida en esquinas opuestas.
 - Las vistas de la interfaz gráfica se verificaron a mano; solo su lógica (`edicion.py`) tiene pruebas automáticas.
+- Sin movimientos diagonales y un solo agente.
 
-### Fuera de alcance
-Ambiente dinámico, replanificación, otros algoritmos (A\*, BFS, genéticos) y
-múltiples agentes. Pueden mencionarse como trabajo futuro.
+### Trabajo futuro
+- Humo dinámico con replanificación.
+- A\* con heurística (distancia Manhattan ponderada).
+- Comparación con BFS y Dijkstra.
+- Varios agentes.
+- Costos no lineales respecto a la concentración de tóxico.
