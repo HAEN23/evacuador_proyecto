@@ -1,3 +1,4 @@
-# Solo para el gráfico (opcional). El núcleo usa únicamente la biblioteca estándar.
+# Necesarios para el grafico y la interfaz grafica (el nucleo y la CLI no los usan).
+# Ademas, en Debian/Ubuntu/Kali:  sudo apt install python3-tk
 matplotlib>=3.7
 numpy>=1.24

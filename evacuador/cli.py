@@ -14,7 +14,7 @@ from .ucs import buscar_ucs
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="evacuador",
-                                description="Evacuación segura con búsqueda de costo uniforme (UCS)")
+                                description="Sistema de Evacuación Táctica: búsqueda de costo uniforme (UCS)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser("generar", help="genera un escenario y lo guarda en CSV")
@@ -36,7 +36,19 @@ def _parser() -> argparse.ArgumentParser:
     e.add_argument("--csv", metavar="ARCHIVO", help="guarda también la tabla en CSV")
     e.add_argument("--guardar-escenarios", metavar="CARPETA",
                    help="guarda cada escenario generado como CSV en esa carpeta")
+
+    sub.add_parser("gui", help="abre la interfaz gráfica (requiere tkinter)")
     return p
+
+
+def _gui() -> None:
+    try:
+        from .gui.app import iniciar_interfaz
+    except ImportError as exc:
+        raise RuntimeError(
+            f"No se pudo cargar la interfaz gráfica ({exc}). Instale tkinter y matplotlib: "
+            "sudo apt install python3-tk && pip install -r requirements.txt") from exc
+    iniciar_interfaz()
 
 
 def _experimentos(args: argparse.Namespace) -> None:
@@ -66,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Escenario guardado en {args.salida}")
         elif args.cmd == "experimentos":
             _experimentos(args)
+        elif args.cmd == "gui":
+            _gui()
         else:
             esc = cargar_csv(args.entrada)
             res = buscar_ucs(esc)

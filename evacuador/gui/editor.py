@@ -13,49 +13,31 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 from typing import Callable, Final, Optional
 
-from .app import COLORES
-from .config import BLOQUEADA, COSTO_MAX, COSTO_MIN
-from .io_csv import cargar_csv, guardar_csv
-from .modelos import Escenario, Posicion, Resultado
-from .ucs import buscar_ucs as resolver
+from ..config import (COLOR_INICIO, COLOR_SALIDA, COLUMNAS_POR_DEFECTO, COSTO_MAX,
+                      DIMENSION_MAX, DIMENSION_MIN, FILAS_POR_DEFECTO,
+                      NIVEL_HUMO_DEFECTO, UMBRAL_HUMO)
+from ..edicion import DisenoEscenario, DisenoInvalido, Herramienta, limitar_dimension
+from ..io_csv import cargar_csv, guardar_csv
+from ..modelos import Escenario, Posicion, Resultado
+from ..ucs import buscar_ucs
+from .tema import COLORES, color_celda
 
 
-FILAS_POR_DEFECTO: Final[int] = 12
-COLUMNAS_POR_DEFECTO: Final[int] = 20
-DIMENSION_MIN: Final[int] = 3
-DIMENSION_MAX: Final[int] = 60
 TAMANO_CELDA_MAX: Final[int] = 36
 TAMANO_CELDA_MIN: Final[int] = 4
 ZOOM_MIN: Final[float] = 0.5
 ZOOM_MAX: Final[float] = 6.0
 ZOOM_PASO: Final[float] = 1.25
-COLOR_INICIO: Final[str] = "#2E7D32"
-COLOR_SALIDA: Final[str] = "#1565C0"
-COLOR_LIBRE_MARCADA: Final[str] = "#CDEBD8"
-"""Color de las celdas pintadas como libres en el editor; en la gráfica se muestran blancas."""
 
-# Herramientas disponibles: (identificador, etiqueta visible).
-HERRAMIENTAS: Final[tuple[tuple[str, str], ...]] = (
-    ("bloqueada", "Celda bloqueada (0)"),
-    ("libre", "Celda libre (1)"),
-    ("humo", "Humo / tóxico (2 – 99)"),
-    ("inicio", "Punto de inicio"),
-    ("salida", "Salida de emergencia"),
-    ("borrar", "Borrar (restaurar celda)"),
+# Herramientas disponibles: (herramienta, etiqueta visible).
+HERRAMIENTAS: Final[tuple[tuple[Herramienta, str], ...]] = (
+    (Herramienta.BLOQUEADA, "Celda bloqueada (0)"),
+    (Herramienta.LIBRE, "Celda libre (1)"),
+    (Herramienta.HUMO, "Humo / tóxico (2 – 99)"),
+    (Herramienta.INICIO, "Punto de inicio"),
+    (Herramienta.SALIDA, "Salida de emergencia"),
+    (Herramienta.BORRAR, "Borrar (restaurar celda)"),
 )
-
-
-def _color_celda(valor: int) -> str:
-    """Devuelve el color de relleno asociado al valor de una celda."""
-    if valor == BLOQUEADA:
-        return COLORES["celda_bloqueada"]
-    if valor == COSTO_MIN:
-        return COLORES["celda_libre"]
-    inicio = [int(COLORES["riesgo_bajo"][i:i + 2], 16) for i in (1, 3, 5)]
-    fin = [int(COLORES["riesgo_alto"][i:i + 2], 16) for i in (1, 3, 5)]
-    t = (valor - 2) / max(COSTO_MAX - 2, 1)
-    r, g, b = (round(a + (z - a) * t) for a, z in zip(inicio, fin))
-    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 class EditorEscenarios(ttk.Frame):
@@ -77,16 +59,13 @@ class EditorEscenarios(ttk.Frame):
         self._al_calcular = al_calcular
         self._al_volver = al_volver
 
+        self._diseno = DisenoEscenario(FILAS_POR_DEFECTO, COLUMNAS_POR_DEFECTO)
         self._filas = tk.IntVar(value=FILAS_POR_DEFECTO)
         self._columnas = tk.IntVar(value=COLUMNAS_POR_DEFECTO)
-        self._herramienta = tk.StringVar(value="bloqueada")
-        self._nivel_humo = tk.IntVar(value=50)
+        self._herramienta = tk.StringVar(value=Herramienta.BLOQUEADA.value)
+        self._nivel_humo = tk.IntVar(value=NIVEL_HUMO_DEFECTO)
         self._estado = estado
 
-        self._grid: list[list[int]] = []
-        self._inicio: Optional[Posicion] = None
-        self._salidas: list[Posicion] = []
-        self._libres_marcadas: set[Posicion] = set()
         self._tamano_celda = TAMANO_CELDA_MAX
         self._margen_x = self._margen_y = 0
         self._zoom = 1.0
@@ -97,7 +76,7 @@ class EditorEscenarios(ttk.Frame):
         self.rowconfigure(0, weight=1)
         self._crear_panel_herramientas()
         self._crear_lienzo()
-        self._nueva_cuadricula()
+        self._dibujar()
         self._registrar_atajos()
 
     def _registrar_atajos(self) -> None:
@@ -128,16 +107,6 @@ class EditorEscenarios(ttk.Frame):
         marco.rowconfigure(0, weight=1)
 
         lienzo = tk.Canvas(marco, bg=COLORES["superficie"], highlightthickness=0, bd=0)
-        ttk.Style(self).configure(
-            "Panel.Vertical.TScrollbar", troughcolor=COLORES["fondo"],
-            background=COLORES["secundario_hover"], bordercolor=COLORES["borde"],
-            lightcolor=COLORES["secundario_hover"], darkcolor=COLORES["secundario_hover"],
-            arrowcolor=COLORES["texto_secundario"], gripcount=0)
-        ttk.Style(self).configure(
-            "Panel.Horizontal.TScrollbar", troughcolor=COLORES["fondo"],
-            background=COLORES["secundario_hover"], bordercolor=COLORES["borde"],
-            lightcolor=COLORES["secundario_hover"], darkcolor=COLORES["secundario_hover"],
-            arrowcolor=COLORES["texto_secundario"], gripcount=0)
         barra = ttk.Scrollbar(marco, orient="vertical", command=lienzo.yview,
                               style="Panel.Vertical.TScrollbar")
         lienzo.configure(yscrollcommand=barra.set)
@@ -211,7 +180,7 @@ class EditorEscenarios(ttk.Frame):
             row=6, column=0, sticky="w", pady=(0, 6))
         # Filas 7 a 12: una por herramienta.
         for i, (clave, etiqueta) in enumerate(HERRAMIENTAS, start=7):
-            ttk.Radiobutton(panel, text=etiqueta, value=clave, variable=self._herramienta,
+            ttk.Radiobutton(panel, text=etiqueta, value=clave.value, variable=self._herramienta,
                             style="Tool.TRadiobutton").grid(row=i, column=0, sticky="w", pady=1)
 
         nivel = ttk.Frame(panel, style="Card.TFrame")
@@ -220,7 +189,7 @@ class EditorEscenarios(ttk.Frame):
         ttk.Label(nivel, text="Nivel de humo", style="Body.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(nivel, textvariable=self._nivel_humo, style="Term.TLabel", width=3,
                   anchor="e").grid(row=0, column=2, sticky="e")
-        ttk.Scale(nivel, from_=2, to=COSTO_MAX, variable=self._nivel_humo,
+        ttk.Scale(nivel, from_=UMBRAL_HUMO, to=COSTO_MAX, variable=self._nivel_humo,
                   command=lambda v: self._nivel_humo.set(round(float(v)))).grid(
             row=1, column=0, columnspan=3, sticky="ew", pady=(4, 0))
 
@@ -348,82 +317,58 @@ class EditorEscenarios(ttk.Frame):
                 "El punto de inicio y la salida se conservan.\n\n¿Desea continuar?",
                 parent=self.winfo_toplevel()):
             return
-        self._grid = [[COSTO_MIN] * len(fila) for fila in self._grid]
-        self._libres_marcadas.clear()
+        self._diseno.restaurar()
         self._dibujar()
         self._estado.set("Cuadrícula restaurada.")
 
     def _nueva_cuadricula(self) -> None:
         """Crea una cuadrícula libre con las dimensiones indicadas."""
         try:
-            filas = min(max(int(self._filas.get()), DIMENSION_MIN), DIMENSION_MAX)
-            columnas = min(max(int(self._columnas.get()), DIMENSION_MIN), DIMENSION_MAX)
+            filas = limitar_dimension(self._filas.get())
+            columnas = limitar_dimension(self._columnas.get())
         except (tk.TclError, ValueError):
             messagebox.showerror("Dimensiones inválidas",
-                                 "Las dimensiones deben ser números enteros.", parent=self.winfo_toplevel())
+                                 "Las dimensiones deben ser números enteros.",
+                                 parent=self.winfo_toplevel())
             return
+        self._diseno.nueva(filas, columnas)
         self._filas.set(filas)
         self._columnas.set(columnas)
-        self._grid = [[COSTO_MIN] * columnas for _ in range(filas)]
-        self._libres_marcadas.clear()
-        self._inicio = (0, 0)
-        self._salidas = [(filas - 1, columnas - 1)]
         self._dibujar()
         self._estado.set(f"Cuadrícula de {filas} × {columnas} generada.")
 
     def cargar_escenario(self, esc: Escenario) -> None:
         """Muestra en el editor un escenario existente."""
-        self._grid = [list(fila) for fila in esc.grid]
-        self._libres_marcadas.clear()
-        self._inicio = esc.inicio
-        self._salidas = list(esc.metas)
+        self._diseno.cargar(esc)
         self._filas.set(esc.filas)
         self._columnas.set(esc.columnas)
         self._dibujar()
 
     def _construir_escenario(self) -> Optional[Escenario]:
-        """Valida el diseño actual y lo convierte en un :class:`Escenario`."""
-        if self._inicio is None:
-            messagebox.showwarning("Escenario incompleto",
-                                   "Coloque el punto de inicio del agente.", parent=self.winfo_toplevel())
-            return None
-        if not self._salidas:
-            messagebox.showwarning("Escenario incompleto",
-                                   "Coloque la salida de emergencia.", parent=self.winfo_toplevel())
-            return None
-        for pos in (self._inicio, *self._salidas):
-            if self._grid[pos[0]][pos[1]] == BLOQUEADA:
-                messagebox.showwarning(
-                    "Escenario inválido",
-                    f"La celda {pos} es de inicio o salida y no puede estar bloqueada.",
-                    parent=self.winfo_toplevel())
-                return None
+        """Convierte el diseño en escenario; avisa al usuario si no es válido."""
         try:
-            return Escenario.desde_listas(self._grid, self._inicio, self._salidas)
-        except ValueError as e:
-            messagebox.showerror("Escenario inválido", str(e), parent=self.winfo_toplevel())
+            return self._diseno.a_escenario()
+        except DisenoInvalido as exc:
+            aviso = (messagebox.showwarning if exc.titulo == "Escenario incompleto"
+                     else messagebox.showerror)
+            aviso(exc.titulo, str(exc), parent=self.winfo_toplevel())
             return None
 
     # -- Dibujo e interacción ----------------------------------------------
 
     def _celda_en(self, x: int, y: int) -> Optional[Posicion]:
         """Convierte coordenadas de pantalla del lienzo en una celda (fila, columna)."""
-        if not self._grid:
-            return None
         x, y = int(self._lienzo.canvasx(x)), int(self._lienzo.canvasy(y))
-        fila = (y - self._margen_y) // self._tamano_celda
-        col = (x - self._margen_x) // self._tamano_celda
-        if 0 <= fila < len(self._grid) and 0 <= col < len(self._grid[0]):
-            return int(fila), int(col)
-        return None
+        pos = ((y - self._margen_y) // self._tamano_celda,
+               (x - self._margen_x) // self._tamano_celda)
+        return pos if self._diseno.dentro(pos) else None
 
     def _dibujar(self) -> None:
         """Redibuja la cuadrícula completa ajustándola al tamaño disponible."""
-        if not self._grid:
-            return
         lienzo = self._lienzo
         lienzo.delete("all")
-        filas, columnas = len(self._grid), len(self._grid[0])
+        diseno = self._diseno
+        filas, columnas = diseno.filas, diseno.columnas
         ancho, alto = max(lienzo.winfo_width(), 1), max(lienzo.winfo_height(), 1)
         ajuste = max(TAMANO_CELDA_MIN, min(TAMANO_CELDA_MAX, (ancho - 32) // columnas,
                                            (alto - 32) // filas))
@@ -438,17 +383,17 @@ class EditorEscenarios(ttk.Frame):
                                        t * filas + 2 * self._margen_y))
 
         fuente = ("TkDefaultFont", max(7, t // 3), "bold")
-        for f, fila in enumerate(self._grid):
+        for f, fila in enumerate(diseno.grid):
             for c, valor in enumerate(fila):
                 x0, y0 = self._margen_x + c * t, self._margen_y + f * t
-                relleno = (COLOR_LIBRE_MARCADA if (f, c) in self._libres_marcadas
-                           else _color_celda(valor))
+                relleno = (COLORES["celda_libre_marcada"] if (f, c) in diseno.libres_marcadas
+                           else color_celda(valor))
                 lienzo.create_rectangle(x0, y0, x0 + t, y0 + t, fill=relleno,
                                         outline=COLORES["borde"])
                 marca = None
-                if (f, c) == self._inicio:
+                if (f, c) == diseno.inicio:
                     marca = ("I", COLOR_INICIO)
-                elif (f, c) in self._salidas:
+                elif (f, c) in diseno.salidas:
                     marca = ("S", COLOR_SALIDA)
                 if marca:
                     m = max(2, t // 6)
@@ -464,49 +409,14 @@ class EditorEscenarios(ttk.Frame):
         if pos is None or pos == self._ultima_celda:
             return
         self._ultima_celda = pos
-        herramienta = self._herramienta.get()
-        f, c = pos
-        if herramienta == "libre":
-            self._libres_marcadas.add(pos)
-        elif herramienta != "inicio" and herramienta != "salida":
-            self._libres_marcadas.discard(pos)
-
-        if herramienta in ("inicio", "salida"):
-            # Inicio y salida son únicos: colocarlos de nuevo los traslada.
-            if herramienta == "inicio":
-                self._inicio = pos
-                if pos in self._salidas:
-                    self._salidas = []
-            else:
-                self._salidas = [pos]
-                if pos == self._inicio:
-                    self._inicio = None
-            if self._grid[f][c] == BLOQUEADA:
-                self._grid[f][c] = COSTO_MIN
-        elif herramienta == "borrar":
-            # Devuelve la celda a su estado inicial: libre y sin marcas.
-            self._grid[f][c] = COSTO_MIN
-            if pos == self._inicio:
-                self._inicio = None
-            if pos in self._salidas:
-                self._salidas = []
-        else:
-            valor = {"bloqueada": BLOQUEADA, "libre": COSTO_MIN}.get(
-                herramienta, int(self._nivel_humo.get()))
-            self._grid[f][c] = valor
-            # Una pared no admite marcas: retira el inicio o la salida.
-            if valor == BLOQUEADA:
-                if pos == self._inicio:
-                    self._inicio = None
-                if pos in self._salidas:
-                    self._salidas = []
+        self._diseno.aplicar(self._herramienta.get(), pos, int(self._nivel_humo.get()))
         self._dibujar()
 
     def _al_mover(self, evento: tk.Event) -> None:
         pos = self._celda_en(evento.x, evento.y)
         if pos is not None:
             self._estado.set(f"Celda (fila {pos[0]}, columna {pos[1]})  ·  "
-                             f"valor {self._grid[pos[0]][pos[1]]}")
+                             f"valor {self._diseno.valor(pos)}")
 
     # -- Acciones ----------------------------------------------------------
 
@@ -545,7 +455,7 @@ class EditorEscenarios(ttk.Frame):
         if esc is None:
             return
         try:
-            res = resolver(esc)
+            res = buscar_ucs(esc)
         except Exception as e:
             messagebox.showerror("Error en la búsqueda", f"Detalle técnico: {e}", parent=self.winfo_toplevel())
             return
