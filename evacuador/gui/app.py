@@ -25,6 +25,7 @@ from ..config import NOMBRE_SISTEMA
 from ..io_csv import cargar_csv
 from ..modelos import Escenario, Resultado
 from ..ucs import buscar_ucs
+from .dialogos import guardar_escenario_como
 from .editor import EditorEscenarios
 from .resultado import VistaResultado
 from .tema import (ANCHO_TEXTO, COLORES, configurar_estilos, elegir_fuente,
@@ -104,6 +105,7 @@ class AplicacionEvacuacion:
         """Asocia los atajos de teclado a las acciones principales."""
         self.raiz.bind_all("<Control-o>", lambda _e: self.abrir_escenario())
         self.raiz.bind_all("<Control-n>", lambda _e: self.mostrar_editor())
+        self.raiz.bind_all("<Control-s>", lambda _e: self.guardar_escenario())
         self.raiz.bind_all("<Control-q>", lambda _e: self.salir())
         self.raiz.bind_all("<F1>", lambda _e: self.mostrar_formato_csv())
         self.raiz.protocol("WM_DELETE_WINDOW", self.salir)
@@ -119,6 +121,8 @@ class AplicacionEvacuacion:
                             command=self.abrir_escenario)
         archivo.add_command(label="Nuevo escenario", accelerator="Ctrl+N",
                             command=self.mostrar_editor)
+        archivo.add_command(label="Guardar escenario como CSV…", accelerator="Ctrl+S",
+                            command=self.guardar_escenario)
         archivo.add_command(label="Pantalla de inicio", command=self.mostrar_inicio)
         archivo.add_separator()
         archivo.add_command(label="Salir", accelerator="Ctrl+Q", command=self.salir)
@@ -330,11 +334,31 @@ class AplicacionEvacuacion:
             texto_editar = "Editar este escenario"
         self._vista_resultado = VistaResultado(
             self._area, escenario, resultado, nombre,
-            al_volver=self.mostrar_inicio, al_editar=al_editar, texto_editar=texto_editar)
+            al_volver=self.mostrar_inicio, al_editar=al_editar, texto_editar=texto_editar,
+            al_guardar=lambda: self._guardar_resultado(escenario, nombre))
         self._vista_resultado.configure(padding=24)
         self._mostrar_vista(self._vista_resultado, compacto=True)
 
     # -- Acciones de la interfaz -------------------------------------------
+
+    def guardar_escenario(self) -> None:
+        """Guarda en CSV el escenario de la vista activa (editor o resultado)."""
+        if self._editor is not None and self._editor.winfo_ismapped():
+            self._editor.guardar()
+        elif self._vista_resultado is not None and self._vista_resultado.winfo_ismapped():
+            self._vista_resultado.guardar()
+        else:
+            messagebox.showinfo(
+                "Guardar escenario",
+                "Cree un escenario con «Nuevo escenario» o abra uno existente para "
+                "poder guardarlo como CSV.", parent=self.raiz)
+
+    def _guardar_resultado(self, escenario: Escenario, nombre: str) -> None:
+        """Guarda como CSV el escenario mostrado en la vista de resultado."""
+        sugerido = nombre if nombre.lower().endswith(".csv") else "escenario_nuevo.csv"
+        ruta = guardar_escenario_como(self.raiz, escenario, sugerido)
+        if ruta is not None:
+            self._estado.set(f"Escenario guardado en «{ruta}».")
 
     def abrir_escenario(self) -> None:
         """Pide un CSV, calcula la ruta con UCS y muestra la vista de resultado."""
