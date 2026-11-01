@@ -2,7 +2,16 @@
 
 Ofrece una cuadrícula sobre la que el usuario pinta los distintos tipos de
 celda (bloqueada, libre o con humo), coloca el punto de inicio del agente y
-la salida de emergencia. El escenario resultante puede guardarse en CSV
+la salida de emergencia. PARA LA DEFENSA:
+    * Esta clase solo DIBUJA y recibe clics. Las reglas de edición (inicio/salida
+      únicos, no pintar paredes sobre ellos, validar) viven en ``edicion.py``
+      (``DisenoEscenario``), que se prueba sin ventana.
+    * Herramientas: bloqueada, libre, humo (con nivel 2-99), inicio, salida, borrar.
+    * El editor permite UNA salida; el sistema y los CSV admiten varias (se cargan
+      desde archivo). Es una decisión de usabilidad, no una limitación del algoritmo.
+    * "Calcular ruta" → valida el diseño → UCS → abre la vista de resultado.
+
+El escenario resultante puede guardarse en CSV
 (mediante :func:`io_csv.guardar_csv`) o resolverse directamente con UCS.
 """
 
@@ -420,6 +429,8 @@ class EditorEscenarios(ttk.Frame):
 
     def _al_pintar(self, evento: tk.Event) -> None:
         """Aplica la herramienta seleccionada sobre la celda bajo el puntero."""
+        # DEFENSA: se pinta al hacer clic y al ARRASTRAR; _ultima_celda evita repintar la
+        # misma celda en cada movimiento de píxel.
         # La celda marcada se reinicia al soltar el botón del ratón.
         pos = self._celda_en(evento.x, evento.y)
         # Evita aplicar varias veces la herramienta dentro de la misma celda.
@@ -469,6 +480,9 @@ class EditorEscenarios(ttk.Frame):
 
     def calcular_ruta(self) -> None:
         """Resuelve el escenario actual con UCS y muestra el resultado."""
+        # DEFENSA: flujo completo del botón "Calcular ruta":
+        #   diseño -> _construir_escenario() (valida; muestra aviso si falta inicio/salida)
+        #          -> buscar_ucs() (núcleo) -> self._al_calcular(...) (muestra el resultado).
         # Convierte el diseño validado en escenario y pasa la solución a la ventana principal.
         esc = self._construir_escenario()
         if esc is None:

@@ -1,5 +1,11 @@
 """Lógica de edición de escenarios, independiente de la interfaz gráfica.
 
+PARA LA DEFENSA: separamos la LÓGICA del editor (aquí) de su DIBUJO (gui/editor.py).
+Así se puede probar sin abrir ventanas (tests/test_edicion.py) y el núcleo nunca
+depende de tkinter (lo verifica tests/test_arquitectura.py). Reglas del editor:
+inicio y salida son únicos (colocarlos otra vez los traslada), no pueden estar
+sobre una pared y a_escenario() valida antes de resolver.
+
 ``DisenoEscenario`` guarda el diseño en curso (cuadrícula, inicio y salidas) y
 aplica las herramientas de pintura. No importa ``tkinter``: el editor gráfico
 solo lo dibuja y le pasa los clics, y las pruebas lo ejercitan directamente.

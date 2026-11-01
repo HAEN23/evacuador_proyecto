@@ -1,5 +1,12 @@
 """Lectura y escritura de escenarios en CSV.
 
+PARA LA DEFENSA: usamos CSV porque es texto plano, se abre en Excel y se versiona en
+Git. La primera línea es un comentario con inicio y salidas; el resto es la matriz.
+Varias salidas se separan con ";" porque la coma ya separa fila y columna.
+Si el archivo está mal (cabecera ausente, texto en vez de número, matriz no
+rectangular, valores fuera de 0-99) se lanza ValueError con un mensaje claro y la
+CLI/GUI lo muestra sin romperse.
+
 Formato:
     # start=r,c goal=r,c;r,c
     <matriz de enteros 0-99 separada por comas>

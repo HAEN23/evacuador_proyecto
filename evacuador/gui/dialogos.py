@@ -1,4 +1,8 @@
-"""Diálogos de archivo compartidos por las vistas de la interfaz."""
+"""Diálogos de archivo compartidos por las vistas de la interfaz.
+
+PARA LA DEFENSA: aquí está "Guardar como…" (Ctrl+S). Lo usan el editor y la vista de
+resultado, así el guardado se escribe una sola vez y siempre produce el formato CSV
+que ``io_csv.cargar_csv`` sabe volver a leer."""
 
 from __future__ import annotations
 

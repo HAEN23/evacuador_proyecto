@@ -1,6 +1,16 @@
 """Experimentos reproducibles: corre UCS sobre varios escenarios y arma la tabla de resultados.
 
 No imprime ni escribe archivos: devuelve datos y texto. La salida la maneja cli.py.
+
+PARA LA DEFENSA:
+    * Son 5 escenarios: A sin humo, B humo moderado, C mucho humo, D mapa grande 40x40
+      y E sin ruta (pared que aísla la salida). Las semillas fijas (1, 7, 3, 11)
+      hacen que la tabla sea idéntica en cualquier computadora.
+    * Qué se mide: costo, pasos, celdas con humo, nodos expandidos y tiempo (ms).
+    * Cómo leer la tabla: más humo y más grande -> más nodos expandidos y más tiempo;
+      en A (sin humo) costo = pasos porque cada celda vale 1; en E no hay ruta y
+      UCS explora toda la zona alcanzable antes de rendirse (8 nodos).
+    * El tiempo es la MEDIANA de 5 corridas para reducir el ruido del sistema.
 """
 from __future__ import annotations
 
@@ -34,6 +44,7 @@ class FilaResultado:
     tiempo_ms: float
 
 
+# Caso E: sirve para demostrar que el sistema NO se cuelga ni inventa rutas.
 def escenario_sin_ruta() -> Escenario:
     """Caso límite construido a mano: la salida queda aislada por una pared."""
     grid = [[1, 1, 1, 1],

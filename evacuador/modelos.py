@@ -1,4 +1,12 @@
-"""Modelos de datos inmutables: el escenario (entorno) y el resultado de la búsqueda."""
+"""Modelos de datos inmutables: el escenario (entorno) y el resultado de la búsqueda.
+
+PARA LA DEFENSA:
+    * Escenario = el "problema" (mapa + inicio + salidas). Resultado = la "respuesta".
+    * Son dataclass(frozen=True): una vez creados NO se pueden modificar. Así la
+      búsqueda no puede dañar el mapa y los datos inválidos se rechazan al crear
+      el objeto (__post_init__), no a mitad del algoritmo.
+    * El mapa es una tupla de tuplas (inmutable) y las posiciones son (fila, columna).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,6 +27,8 @@ class Escenario:
     metas: tuple[Posicion, ...]
 
     def __post_init__(self) -> None:
+        # Se ejecuta SIEMPRE que se crea un Escenario (desde CSV, generador o editor):
+        # es la única puerta de entrada, por eso todas las validaciones están aquí.
         # Valida forma, valores, existencia de salidas y posiciones dentro del mapa.
         # Los datos inválidos se reportan como ValueError, también al cargar CSV.
         if not self.grid or not self.grid[0]:
@@ -54,6 +64,7 @@ class Escenario:
         return self.grid[pos[0]][pos[1]]
 
     def es_transitable(self, pos: Posicion) -> bool:
+        # Decide si se puede pisar una celda. 0 significa "prohibido", no "gratis".
         return self.costo(pos) != BLOQUEADA
 
     def vecinos_transitables(self, pos: Posicion) -> Iterator[Posicion]:
@@ -69,6 +80,7 @@ class Escenario:
 class Resultado:
     """Salida de la búsqueda: solución y métricas de rendimiento."""
 
+    # ruta=None significa "no existe camino seguro" (caso de situación crítica).
     ruta: tuple[Posicion, ...] | None
     costo: int | None
     nodos_expandidos: int

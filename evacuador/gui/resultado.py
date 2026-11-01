@@ -3,6 +3,10 @@
 Muestra, dentro de la ventana principal, el mapa de riesgo del escenario con
 la ruta calculada por UCS y las métricas de la búsqueda. La gráfica se
 integra en ``tkinter`` mediante el backend ``TkAgg`` de ``matplotlib``.
+
+PARA LA DEFENSA: el mapa lo dibuja ``visualizacion.dibujar_mapa`` (el mismo código que
+usa la CLI con ``--grafico``), así no hay dos versiones del dibujo. Si no hay ruta se
+muestra una alerta de "situación crítica" en lugar de métricas de camino.
 """
 
 from __future__ import annotations

@@ -1,4 +1,15 @@
-"""Interfaz de línea de comandos."""
+"""Interfaz de línea de comandos.
+
+PARA LA DEFENSA: esta capa solo LEE argumentos, llama al núcleo y muestra resultados.
+No contiene lógica de búsqueda. Comandos (para la demo):
+    python -m evacuador generar data/x.csv --seed 7     -> crea un escenario
+    python -m evacuador resolver data/x.csv --animar    -> UCS paso a paso en terminal
+    python -m evacuador resolver data/x.csv --grafico   -> mapa con matplotlib
+    python -m evacuador experimentos                    -> tabla A-E del informe
+    python -m evacuador gui                             -> interfaz gráfica
+Los errores esperables (CSV mal formado, archivo inexistente) salen como
+"Error: ..." con código de salida 1, sin traceback.
+"""
 from __future__ import annotations
 
 import argparse
@@ -71,6 +82,8 @@ def _experimentos(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Devuelve el código de salida (0 = ok, 1 = error) en vez de llamar sys.exit,
+    # así las pruebas pueden invocar main([...]) directamente.
     args = _parser().parse_args(argv)
     try:
         if args.cmd == "generar":
@@ -82,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
             _experimentos(args)
         elif args.cmd == "gui":
             _gui()
-        else:
+        else:  # subcomando "resolver"
             esc = cargar_csv(args.entrada)
             res = buscar_ucs(esc)
             if args.animar:

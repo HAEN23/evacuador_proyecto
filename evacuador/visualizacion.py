@@ -1,4 +1,11 @@
-"""Visualización en terminal (ASCII, animada) y gráfica (matplotlib, opcional)."""
+"""Visualización en terminal (ASCII, animada) y gráfica (matplotlib, opcional).
+
+PARA LA DEFENSA: leyenda del mapa en terminal -> # bloqueada, . limpia, + humo leve,
+% humo denso, o explorada (rastro de UCS), * ruta final, S inicio, G salida.
+"animar" imprime la expansión nodo por nodo: es lo que muestra cómo UCS "se
+expande como una mancha" empezando por lo más barato. matplotlib es opcional:
+el núcleo funciona sin él.
+"""
 from __future__ import annotations
 
 import time

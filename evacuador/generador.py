@@ -1,4 +1,16 @@
-"""Generador de escenarios reproducibles (parametrizable y con semilla)."""
+"""Generador de escenarios reproducibles (parametrizable y con semilla).
+
+PARA LA DEFENSA:
+    * "Reproducible": con la misma semilla (seed) sale SIEMPRE el mismo mapa. Por
+      eso la tabla de experimentos del informe se puede volver a obtener igual.
+    * Humo: se eligen focos al azar; el humo baja linealmente con la distancia
+      Manhattan al foco (centro = 99, borde del radio = cercano a 1).
+    * Bloqueos: cada celda se bloquea con probabilidad = densidad_bloqueo.
+    * garantizar_ruta: se reintenta (hasta max_intentos) hasta que UCS encuentre
+      camino, así los experimentos A-D siempre son resolubles. El caso E (sin ruta)
+      se construye a mano a propósito.
+    * Inicio (0,0) y salida (última fila, última columna) siempre quedan limpios.
+"""
 from __future__ import annotations
 
 import random

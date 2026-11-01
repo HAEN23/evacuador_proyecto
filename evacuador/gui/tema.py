@@ -2,6 +2,10 @@
 
 Es el único módulo que define la apariencia. ``app``, ``editor`` y ``resultado``
 dependen de él, y ninguno depende de los otros dos.
+
+PARA LA DEFENSA: separar el tema evita colores y fuentes repartidos por todo el código.
+El color de cada celda va de claro (costo bajo) a rojo oscuro (costo 99) y las paredes
+son gris oscuro; los colores de inicio/salida/ruta vienen de ``config.py``.
 """
 from __future__ import annotations
 

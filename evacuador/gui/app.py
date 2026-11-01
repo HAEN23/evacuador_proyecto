@@ -9,6 +9,16 @@ ventana que alterna entre tres vistas:
 * Resultado: mapa de riesgo con la ruta calculada por Búsqueda de Costo
   Uniforme (UCS) y sus métricas (módulo ``resultado``).
 
+PARA LA DEFENSA:
+    * La GUI es solo PRESENTACIÓN: no contiene el algoritmo. Llama a ``buscar_ucs``,
+      ``cargar_csv`` y ``guardar_csv`` del núcleo. Esta ventana coordina 3 vistas
+      (inicio, editor, resultado) en un mismo marco, sin abrir ventanas extra.
+    * Atajos útiles en la demo: Ctrl+O abrir CSV, Ctrl+N nuevo escenario, Ctrl+S
+      guardar, F1 formato CSV, Ctrl+Q salir; en el editor, F5 calcula la ruta y
+      Ctrl +/-/0 hacen zoom (ver ``_registrar_atajos``).
+    * Si tkinter no está instalado, el resto del sistema (CLI, pruebas) funciona igual:
+      la GUI se importa solo cuando se ejecuta ``python -m evacuador gui``.
+
 Proyecto desarrollado para la asignatura Fundamentos de Inteligencia
 Artificial, Universidad Politécnica de Chiapas.
 """
@@ -328,6 +338,8 @@ class AplicacionEvacuacion:
             desde_editor: ``True`` si el cálculo se lanzó desde el editor; en
                 ese caso el botón de edición regresa al diseño en curso.
         """
+        # DEFENSA: la vista de resultado se destruye y se vuelve a crear en cada cálculo,
+        # así el mapa y las métricas siempre corresponden al último escenario resuelto.
         # Cada cálculo reemplaza la vista anterior para actualizar mapa y gráfica.
         if self._vista_resultado is not None:
             self._vista_resultado.destroy()
