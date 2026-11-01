@@ -63,12 +63,14 @@ def hex_a_rgb(color: str) -> tuple[int, int, int]:
 def degradado_riesgo(t: float) -> str:
     """Color entre riesgo bajo (``t = 0``) y riesgo alto (``t = 1``)."""
     inicio, fin = hex_a_rgb(COLORES["riesgo_bajo"]), hex_a_rgb(COLORES["riesgo_alto"])
+    # Interpola cada canal RGB en línea recta desde el color bajo hasta el alto.
     r, g, b = (round(a + (z - a) * t) for a, z in zip(inicio, fin))
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def color_celda(valor: int) -> str:
     """Color de relleno de una celda según su valor (0 bloqueada, 1 libre, 2-99 humo)."""
+    # Bloqueada y libre usan colores sólidos; los valores restantes escalan el degradado.
     if valor == BLOQUEADA:
         return COLORES["celda_bloqueada"]
     if valor == COSTO_MIN:

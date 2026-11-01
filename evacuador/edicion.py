@@ -104,19 +104,23 @@ class DisenoEscenario:
         if not self.dentro(pos):
             return
         herramienta = Herramienta(herramienta)
+        # Las celdas marcadas como libres solo tienen una marca visual; su valor es 1.
         if herramienta is Herramienta.LIBRE:
             self.libres_marcadas.add(pos)
         elif herramienta not in (Herramienta.INICIO, Herramienta.SALIDA):
             self.libres_marcadas.discard(pos)
 
+        # Inicio y salida son únicos: colocarlos de nuevo los mueve y los despeja.
         if herramienta is Herramienta.INICIO:
             self._colocar_inicio(pos)
         elif herramienta is Herramienta.SALIDA:
             self._colocar_salida(pos)
         elif herramienta is Herramienta.BORRAR:
+            # Borrar deja la celda libre y elimina cualquier marca de inicio o salida.
             self._poner(pos, COSTO_MIN)
             self._quitar_marcas(pos)
         else:
+            # Pared, libre y humo asignan su costo; una pared elimina las marcas.
             valor = {Herramienta.BLOQUEADA: BLOQUEADA,
                      Herramienta.LIBRE: COSTO_MIN}.get(herramienta, nivel_humo)
             self._poner(pos, min(max(int(valor), BLOQUEADA), COSTO_MAX))
@@ -157,6 +161,7 @@ class DisenoEscenario:
         Raises:
             DisenoInvalido: si falta el inicio o la salida, o alguno está bloqueado.
         """
+        # Valida los elementos requeridos antes de construir el modelo.
         if self.inicio is None:
             raise DisenoInvalido("Escenario incompleto",
                                  "Coloque el punto de inicio del agente.")
@@ -172,4 +177,3 @@ class DisenoEscenario:
             return Escenario.desde_listas(self.grid, self.inicio, self.salidas)
         except ValueError as exc:
             raise DisenoInvalido("Escenario inválido", str(exc)) from exc
-

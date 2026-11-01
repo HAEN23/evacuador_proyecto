@@ -9,6 +9,7 @@ from .config import BLOQUEADA, COSTO_MAX, MOVIMIENTOS
 Posicion = tuple[int, int]
 
 
+# frozen evita que una búsqueda modifique accidentalmente el escenario.
 @dataclass(frozen=True)
 class Escenario:
     """Cuadrícula estática. Cada celda vale 0 (bloqueada) o 1..99 (costo de riesgo)."""
@@ -18,6 +19,8 @@ class Escenario:
     metas: tuple[Posicion, ...]
 
     def __post_init__(self) -> None:
+        # Valida forma, valores, existencia de salidas y posiciones dentro del mapa.
+        # Los datos inválidos se reportan como ValueError, también al cargar CSV.
         if not self.grid or not self.grid[0]:
             raise ValueError("La cuadrícula no puede estar vacía")
         if any(len(fila) != len(self.grid[0]) for fila in self.grid):
@@ -33,6 +36,7 @@ class Escenario:
     @classmethod
     def desde_listas(cls, grid: Sequence[Sequence[int]], inicio: Posicion,
                      metas: Sequence[Posicion]) -> "Escenario":
+        # Convierte matrices y posiciones mutables a tuplas inmutables.
         return cls(tuple(tuple(f) for f in grid), tuple(inicio), tuple(map(tuple, metas)))
 
     @property
@@ -54,6 +58,7 @@ class Escenario:
 
     def vecinos_transitables(self, pos: Posicion) -> Iterator[Posicion]:
         """Valida transitabilidad ANTES de que el costo entre en juego."""
+        # Descarta posiciones fuera del mapa o bloqueadas antes de entregarlas a UCS.
         for dr, dc in MOVIMIENTOS:
             vecino = (pos[0] + dr, pos[1] + dc)
             if self.dentro(vecino) and self.es_transitable(vecino):
@@ -77,4 +82,5 @@ class Resultado:
 
     @property
     def pasos(self) -> int:
+        # Número de movimientos: celdas de la ruta menos la inicial.
         return len(self.ruta) - 1 if self.ruta else 0

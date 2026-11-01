@@ -94,6 +94,7 @@ class EditorEscenarios(ttk.Frame):
             "<Control-0>": self.ajustar_zoom,
         }
         for secuencia, accion in atajos.items():
+            # add="+" conserva otros atajos; a=accion evita el cierre tardío de la lambda.
             ventana.bind(secuencia, lambda _e, a=accion: a() if self.winfo_ismapped() else None,
                          add="+")
 
@@ -118,13 +119,16 @@ class EditorEscenarios(ttk.Frame):
 
         panel = ttk.Frame(lienzo, style="Card.TFrame", padding=(24, 20))
         panel.columnconfigure(0, weight=1)
+        # El Canvas funciona como área desplazable para el panel interior.
         lienzo.create_window(0, 0, window=panel, anchor="nw")
 
         def ajustar(_evento: tk.Event) -> None:
+            # Actualiza el área desplazable cuando cambian las dimensiones del panel.
             lienzo.configure(scrollregion=lienzo.bbox("all"),
                              width=panel.winfo_reqwidth())
 
         def desplazar(evento: tk.Event) -> None:
+            # Linux informa la rueda con num 4/5; Windows y macOS usan delta.
             if evento.num == 4:
                 pasos = -1
             elif evento.num == 5:
@@ -134,10 +138,12 @@ class EditorEscenarios(ttk.Frame):
             lienzo.yview_scroll(pasos, "units")
 
         def activar_rueda(_evento: tk.Event) -> None:
+            # La rueda solo se captura mientras el puntero está sobre el panel.
             for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
                 self.bind_all(secuencia, desplazar)
 
         def desactivar_rueda(_evento: tk.Event) -> None:
+            # Al salir se liberan los bindings globales para no afectar otras vistas.
             for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
                 self.unbind_all(secuencia)
 
@@ -294,6 +300,7 @@ class EditorEscenarios(ttk.Frame):
     def _al_girar_rueda(self, evento: tk.Event) -> None:
         """Rueda: desplaza. Mayús + rueda: desplaza en horizontal. Ctrl + rueda: zoom."""
         arriba = evento.num == 4 or getattr(evento, "delta", 0) > 0
+        # state es una máscara de bits: Ctrl=0x0004 y Mayús=0x0001.
         if evento.state & 0x0004:  # Ctrl
             if arriba:
                 self.acercar()
@@ -362,6 +369,8 @@ class EditorEscenarios(ttk.Frame):
 
     def _celda_en(self, x: int, y: int) -> Optional[Posicion]:
         """Convierte coordenadas de pantalla del lienzo en una celda (fila, columna)."""
+        # canvasx/canvasy corrigen el desplazamiento; luego se restan márgenes
+        # y se divide entre el tamaño de celda para obtener fila y columna.
         x, y = int(self._lienzo.canvasx(x)), int(self._lienzo.canvasy(y))
         pos = ((y - self._margen_y) // self._tamano_celda,
                (x - self._margen_x) // self._tamano_celda)
@@ -369,6 +378,7 @@ class EditorEscenarios(ttk.Frame):
 
     def _dibujar(self) -> None:
         """Redibuja la cuadrícula completa ajustándola al tamaño disponible."""
+        # Recalcula y dibuja el mapa completo, con celdas entre 4 y 36 px antes del zoom.
         lienzo = self._lienzo
         lienzo.delete("all")
         diseno = self._diseno
@@ -387,6 +397,7 @@ class EditorEscenarios(ttk.Frame):
                                        t * filas + 2 * self._margen_y))
 
         fuente = ("TkDefaultFont", max(7, t // 3), "bold")
+        # Cada celda usa su color y el inicio/salida se distinguen con un círculo.
         for f, fila in enumerate(diseno.grid):
             for c, valor in enumerate(fila):
                 x0, y0 = self._margen_x + c * t, self._margen_y + f * t
@@ -409,7 +420,9 @@ class EditorEscenarios(ttk.Frame):
 
     def _al_pintar(self, evento: tk.Event) -> None:
         """Aplica la herramienta seleccionada sobre la celda bajo el puntero."""
+        # La celda marcada se reinicia al soltar el botón del ratón.
         pos = self._celda_en(evento.x, evento.y)
+        # Evita aplicar varias veces la herramienta dentro de la misma celda.
         if pos is None or pos == self._ultima_celda:
             return
         self._ultima_celda = pos
@@ -426,6 +439,7 @@ class EditorEscenarios(ttk.Frame):
 
     def _aplicar_zoom(self, zoom: float) -> None:
         """Cambia el nivel de zoom conservando el centro de la vista."""
+        # Guarda la región visible, redibuja y restaura el mismo centro de la vista.
         zoom = min(ZOOM_MAX, max(ZOOM_MIN, zoom))
         if zoom == self._zoom:
             return
@@ -455,6 +469,7 @@ class EditorEscenarios(ttk.Frame):
 
     def calcular_ruta(self) -> None:
         """Resuelve el escenario actual con UCS y muestra el resultado."""
+        # Convierte el diseño validado en escenario y pasa la solución a la ventana principal.
         esc = self._construir_escenario()
         if esc is None:
             return

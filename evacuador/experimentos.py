@@ -52,6 +52,8 @@ def construir_escenarios() -> list[tuple[str, Escenario]]:
 def ejecutar(nombre: str, escenario: Escenario,
              repeticiones: int = REPETICIONES_TIEMPO) -> FilaResultado:
     corridas = [buscar_ucs(escenario) for _ in range(max(1, repeticiones))]
+    # UCS es determinista: se toma la ruta de la primera corrida y se usa la
+    # mediana de tiempos para reducir el efecto de picos del sistema operativo.
     res = corridas[0]  # el algoritmo es determinista: todas dan lo mismo salvo el tiempo
     return FilaResultado(
         nombre=nombre,

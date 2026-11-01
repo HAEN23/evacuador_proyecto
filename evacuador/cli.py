@@ -13,6 +13,7 @@ from .ucs import buscar_ucs
 
 
 def _parser() -> argparse.ArgumentParser:
+    # La CLI organiza las operaciones como subcomandos.
     p = argparse.ArgumentParser(prog="evacuador",
                                 description="Sistema de Evacuación Táctica: búsqueda de costo uniforme (UCS)")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -42,6 +43,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _gui() -> None:
+    # Importación perezosa: los otros comandos no requieren tkinter ni matplotlib.
     try:
         from .gui.app import iniciar_interfaz
     except ImportError as exc:
@@ -88,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
             vis.mostrar_resultado(esc, res)
             if args.grafico:
                 vis.graficar(esc, res)
+    # Presenta errores esperables sin traceback y comunica el fallo con código 1.
     except (ValueError, RuntimeError, OSError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

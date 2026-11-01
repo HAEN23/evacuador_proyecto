@@ -29,10 +29,12 @@ class ConfigGenerador:
 
 def generar_escenario(cfg: ConfigGenerador = ConfigGenerador()) -> Escenario:
     """Crea un escenario con humo que decae con la distancia a cada foco."""
+    # random.Random con semilla fija permite reproducir el mismo escenario.
     rng = random.Random(cfg.seed)
     inicio = (0, 0)
     meta = (cfg.filas - 1, cfg.columnas - 1)
 
+    # Cada intento crea el mapa, añade humo y bloqueos y despeja inicio y meta.
     for _ in range(cfg.max_intentos):
         grid = [[COSTO_MIN] * cfg.columnas for _ in range(cfg.filas)]
         _colocar_humo(grid, cfg, rng)
@@ -41,6 +43,7 @@ def generar_escenario(cfg: ConfigGenerador = ConfigGenerador()) -> Escenario:
         grid[meta[0]][meta[1]] = COSTO_MIN
 
         escenario = Escenario.desde_listas(grid, inicio, [meta])
+        # Si se exige una ruta, solo se acepta el escenario cuando UCS la encuentra.
         if not cfg.garantizar_ruta or buscar_ucs(escenario).encontrada:
             return escenario
 
@@ -54,14 +57,17 @@ def _colocar_humo(grid: list[list[int]], cfg: ConfigGenerador, rng: random.Rando
         fr, fc = rng.randrange(cfg.filas), rng.randrange(cfg.columnas)
         for r in range(cfg.filas):
             for c in range(cfg.columnas):
+                # El humo decae linealmente con la distancia Manhattan al foco.
                 d = abs(r - fr) + abs(c - fc)
                 if d <= cfg.radio_humo:
                     valor = int(COSTO_MAX - rango * d / (cfg.radio_humo + 1))
+                    # Si coinciden varios focos, conserva el nivel de humo mayor.
                     grid[r][c] = max(grid[r][c], valor)
 
 
 def _colocar_bloqueos(grid: list[list[int]], cfg: ConfigGenerador, rng: random.Random) -> None:
     for r in range(cfg.filas):
         for c in range(cfg.columnas):
+            # La densidad configura la probabilidad de bloquear cada celda.
             if rng.random() < cfg.densidad_bloqueo:
                 grid[r][c] = BLOQUEADA

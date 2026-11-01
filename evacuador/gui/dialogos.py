@@ -28,10 +28,12 @@ def guardar_escenario_como(padre: tk.Misc, escenario: Escenario,
         parent=ventana, title="Guardar escenario como CSV", defaultextension=".csv",
         filetypes=TIPOS_CSV, initialfile=nombre_sugerido)
     if not ruta:
+        # El diálogo devuelve una ruta vacía cuando se cancela.
         return None
     if not ruta.lower().endswith(".csv"):
         ruta += ".csv"
     try:
+        # Si la escritura falla, el diálogo informa el error y permite continuar en la GUI.
         guardar_csv(ruta, escenario)
     except OSError as exc:
         messagebox.showerror("Error al guardar",

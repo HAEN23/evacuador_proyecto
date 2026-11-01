@@ -278,10 +278,12 @@ class AplicacionEvacuacion:
 
     def _mostrar_vista(self, vista: ttk.Frame, compacto: bool) -> None:
         """Muestra una vista en el área de trabajo y oculta las demás."""
+        # Las vistas comparten el mismo espacio; grid_remove las oculta sin destruirlas.
         for otra in (self._vista_inicio, self._editor, self._vista_resultado):
             if otra is not None and otra is not vista:
                 otra.grid_remove()
         vista.grid(row=0, column=0, sticky="nsew")
+        # El encabezado compacto deja más espacio al editor y al mapa de resultados.
         for etiqueta in self._detalles_encabezado:
             if compacto:
                 etiqueta.grid_remove()
@@ -301,6 +303,7 @@ class AplicacionEvacuacion:
             escenario: Escenario a editar. Si se omite, se conserva el diseño
                 en curso del editor.
         """
+        # El editor se instancia una sola vez para conservar el diseño al volver.
         if self._editor is None:
             self._editor = EditorEscenarios(
                 self._area, estado=self._estado,
@@ -325,8 +328,10 @@ class AplicacionEvacuacion:
             desde_editor: ``True`` si el cálculo se lanzó desde el editor; en
                 ese caso el botón de edición regresa al diseño en curso.
         """
+        # Cada cálculo reemplaza la vista anterior para actualizar mapa y gráfica.
         if self._vista_resultado is not None:
             self._vista_resultado.destroy()
+        # Si se llega desde el editor, se vuelve al diseño; si no, se carga este mapa.
         if desde_editor:
             al_editar, texto_editar = self.mostrar_editor, "Volver al editor"
         else:
@@ -343,6 +348,7 @@ class AplicacionEvacuacion:
 
     def guardar_escenario(self) -> None:
         """Guarda en CSV el escenario de la vista activa (editor o resultado)."""
+        # winfo_ismapped identifica cuál de las vistas está visible.
         if self._editor is not None and self._editor.winfo_ismapped():
             self._editor.guardar()
         elif self._vista_resultado is not None and self._vista_resultado.winfo_ismapped():
@@ -370,9 +376,11 @@ class AplicacionEvacuacion:
         nombre = os.path.basename(ruta)
         self._registrar_progreso("procesando", nombre)
         try:
+            # Carga el escenario y resuelve UCS antes de mostrar la vista.
             escenario = cargar_csv(ruta)
             resultado = buscar_ucs(escenario)
         except (ValueError, OSError) as exc:
+            # Los archivos inválidos o ilegibles se notifican sin cerrar la GUI.
             self._registrar_progreso("error", nombre)
             messagebox.showerror(
                 "Error al procesar el escenario",
@@ -394,6 +402,7 @@ class AplicacionEvacuacion:
         if estado == "procesando":
             self._estado.set(f"Procesando escenario «{nombre_archivo}»…")
             self.raiz.config(cursor="watch")
+            # Fuerza a tkinter a repintar el estado y el cursor antes del trabajo pesado.
             self.raiz.update_idletasks()
             return
 

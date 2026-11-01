@@ -14,6 +14,7 @@ LEYENDA = ("# bloqueada | . limpia | + humo leve | % humo denso | "
 
 
 def _simbolo(esc: Escenario, pos: Posicion, ruta: set[Posicion], vistos: set[Posicion]) -> str:
+    # El orden da prioridad al inicio/salida sobre ruta, explorados y terreno.
     if pos == esc.inicio:
         return "S"
     if pos in esc.metas:
@@ -57,8 +58,10 @@ def animar(esc: Escenario, res: Resultado, pausa: float = 0.05) -> None:
     """Dibuja la expansión de UCS nodo por nodo."""
     total = len(res.explorados)
     for i in range(1, total + 1):
+        # Limpia la terminal y vuelve al inicio para dibujar el siguiente cuadro.
         print("\033[H\033[J", end="")
         print(f"Expandiendo nodo {i}/{total} -> {res.explorados[i - 1]}")
+        # El rastro crece progresivamente: primero un nodo, luego dos, etc.
         print(render_ascii(esc, explorados=res.explorados[:i]))
         time.sleep(pausa)
     print("\033[H\033[J", end="")
@@ -82,22 +85,27 @@ def dibujar_mapa(figura, ejes, esc: Escenario, res: Resultado) -> None:
     from matplotlib.ticker import MaxNLocator
 
     datos = np.array(esc.grid, dtype=float)
+    # NaN se muestra con el color "bad" del mapa, reservado para bloqueos.
     datos[datos == BLOQUEADA] = np.nan
     mapa = colormaps["YlOrRd"].with_extremes(bad=COLOR_BLOQUEADA)
+    # imshow representa la matriz; vmin y vmax fijan la escala de riesgo 1-99.
     imagen = ejes.imshow(datos, cmap=mapa, vmin=COSTO_MIN, vmax=COSTO_MAX)
     figura.colorbar(imagen, ax=ejes, label="Concentración de tóxico (costo)", shrink=0.9)
 
     if res.explorados:
+        # En scatter, las columnas son x y las filas son y.
         ejes.scatter([c for _, c in res.explorados], [r for r, _ in res.explorados],
                      c=COLOR_EXPLORADA, s=14, alpha=0.6, label="Área explorada (UCS)")
     if res.ruta:
         columnas, filas = [c for _, c in res.ruta], [r for r, _ in res.ruta]
+        # Dos trazos superpuestos hacen que la ruta contraste sobre cualquier color.
         ejes.plot(columnas, filas, "-", color="white", lw=5, zorder=2)
         ejes.plot(columnas, filas, "-", color=COLOR_RUTA, lw=2.5, zorder=3,
                   label="Ruta óptima de escape")
     ejes.scatter(esc.inicio[1], esc.inicio[0], c=COLOR_INICIO, edgecolors="white",
                  s=140, zorder=4, label="Punto de inicio")
     for i, (r, c) in enumerate(esc.metas):
+        # Solo la primera salida etiqueta el grupo para evitar duplicados en la leyenda.
         ejes.scatter(c, r, c=COLOR_SALIDA, edgecolors="white", marker="*", s=300, zorder=4,
                      label="Salida de emergencia" if i == 0 else None)
 

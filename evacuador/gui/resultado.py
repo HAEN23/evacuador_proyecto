@@ -45,7 +45,9 @@ class VistaResultado(ttk.Frame):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(1, weight=1)
         if not resultado.encontrada:
+            # La alerta y el diálogo indican que ninguna salida es alcanzable.
             self._crear_alerta_critica()
+            # Espera a que tkinter dibuje la vista antes de abrir el diálogo.
             self.after_idle(self._notificar_situacion_critica)
         self._crear_panel_metricas(nombre, al_volver, al_editar, texto_editar, al_guardar)
         self._crear_grafica()
@@ -146,6 +148,7 @@ class VistaResultado(ttk.Frame):
         interior.pack(fill="both", expand=True, padx=1, pady=1)
 
         try:
+            # El canvas integra matplotlib con tkinter; la barra agrega controles de navegación.
             from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                            NavigationToolbar2Tk)
         except ImportError:
@@ -155,6 +158,7 @@ class VistaResultado(ttk.Frame):
             return
 
         figura = nueva_figura(COLORES["superficie"])
+        # Comparte la función de dibujo con la gráfica independiente de visualizacion.py.
         dibujar_mapa(figura, figura.add_subplot(111), self._escenario, self._resultado)
 
         lienzo = FigureCanvasTkAgg(figura, master=interior)
