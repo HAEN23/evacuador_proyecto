@@ -5,6 +5,7 @@ import unittest
 from evacuador.generador import ConfigGenerador, generar_escenario
 from evacuador.genetico import (Grupo, ParametrosAG, codificar, crear_problema, decodificar,
                                 evaluar, optimizar, reparar)
+from evacuador.genetico import _elegir_top3, _parecidas
 from evacuador.modelos import Escenario
 
 # Cuadrícula 3x3 libre: permite calcular a mano los riesgos y tiempos esperados.
@@ -208,6 +209,22 @@ class TestOptimizar(unittest.TestCase):
         self.assertEqual([c.aptitud for c in top], sorted((c.aptitud for c in top), reverse=True))
         self.assertEqual(self.resultado.mejor, top[0])
 
+    def test_top3_respeta_la_separacion_minima(self):
+        top = self.resultado.top3
+        sep = self.params.separacion_top3
+        for i, a in enumerate(top):
+            for b in top[i + 1:]:
+                self.assertFalse(_parecidas(a.salidas, b.salidas, sep))
+
+    def test_sin_filtro_basta_con_que_sean_distintas(self):
+        params = dataclasses.replace(self.params, separacion_top3=0)
+        top = optimizar(self.esc, self.grupos, params).top3
+        self.assertEqual(len({c.salidas for c in top}), len(top))
+
+    def test_separacion_negativa_se_rechaza(self):
+        with self.assertRaises(ValueError):
+            ParametrosAG(separacion_top3=-1)
+
     def test_el_mejor_historico_coincide_con_el_top1(self):
         self.assertAlmostEqual(self.resultado.mejor.aptitud,
                                max(g.aptitud_mejor for g in self.resultado.historial))
@@ -237,3 +254,19 @@ class TestOptimizar(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSeparacionTop3(unittest.TestCase):
+    def test_parecidas_si_cada_salida_esta_cerca_de_alguna(self):
+        a = ((0, 0), (5, 5))
+        self.assertTrue(_parecidas(a, ((0, 1), (5, 4)), 1))
+        self.assertFalse(_parecidas(a, ((0, 1), (5, 4)), 0))
+        self.assertFalse(_parecidas(a, ((0, 1), (9, 9)), 1))
+
+    def test_se_salta_la_que_se_parece_a_una_elegida(self):
+        class C:  # solo importan las salidas
+            def __init__(self, salidas):
+                self.salidas = salidas
+        c1, c2, c3 = C(((0, 0), (9, 9))), C(((0, 1), (9, 9))), C(((5, 5), (9, 9)))
+        self.assertEqual(_elegir_top3([c1, c2, c3], 2), [c1, c3])
+        self.assertEqual(_elegir_top3([c1, c2, c3], 0), [c1, c2, c3])
