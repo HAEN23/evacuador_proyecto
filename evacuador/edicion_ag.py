@@ -30,6 +30,11 @@ class DisenoAG(DisenoEscenario):
         super().nueva(filas, columnas)
         self.grupos = {}
 
+    def restaurar(self) -> None:
+        """Devuelve todas las celdas a libres y quita los grupos."""
+        super().restaurar()
+        self.grupos = {}
+
     def cargar(self, esc: Escenario) -> None:
         """Carga un escenario y conserva los grupos que sigan siendo válidos."""
         super().cargar(esc)

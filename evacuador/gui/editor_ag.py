@@ -112,7 +112,11 @@ class EditorAG(EditorEscenarios):
         poner(ttk.Label(panel, text="ALGORITMO GENÉTICO", style="CardEyebrow.TLabel"),
               sticky="w")
         poner(ttk.Label(panel, text="Escenario y grupos", style="SectionTitle.TLabel"),
-              sticky="w", pady=(4, 14))
+              sticky="w", pady=(4, 4))
+        poner(ttk.Label(panel, text="Las salidas no se colocan a mano: el algoritmo "
+                                    "genético decide dónde ponerlas al ejecutarlo (F5).",
+                        style="Hint.TLabel", wraplength=300, justify="left"),
+              sticky="w", pady=(0, 14))
 
         # Dimensiones
         poner(ttk.Label(panel, text="Dimensiones", style="Subsection.TLabel"),
@@ -268,6 +272,17 @@ class EditorAG(EditorEscenarios):
             return
         self._ruta_grupos = ruta
         self._estado.set(f"Grupos guardados en «{ruta}».")
+
+    def restaurar_cuadricula(self) -> None:
+        """Deja todas las celdas libres y quita los grupos."""
+        if not messagebox.askokcancel(
+                "Restaurar cuadrícula",
+                "Se eliminarán todas las paredes, zonas de humo y grupos de personas.\n\n"
+                "¿Desea continuar?", parent=self.winfo_toplevel()):
+            return
+        self._diseno.restaurar()
+        self._dibujar()
+        self._estado.set("Cuadrícula restaurada: sin paredes, humo ni grupos.")
 
     def quitar_grupos(self) -> None:
         self._diseno.grupos = {}

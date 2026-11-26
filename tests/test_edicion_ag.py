@@ -41,6 +41,13 @@ class TestDisenoAG(unittest.TestCase):
         self.d.nueva(3, 3)
         self.assertEqual(self.d.grupos, {})
 
+    def test_restaurar_quita_grupos_y_paredes(self):
+        self.d.aplicar(Herramienta.BLOQUEADA, (1, 1))
+        self.d.aplicar(Herramienta.GRUPO, (2, 2), tamano=3)
+        self.d.restaurar()
+        self.assertEqual(self.d.grupos, {})
+        self.assertNotEqual(self.d.valor((1, 1)), BLOQUEADA)
+
     def test_poner_grupos_valida(self):
         self.d.aplicar(Herramienta.BLOQUEADA, (1, 1))
         with self.assertRaisesRegex(ValueError, "fuera"):
