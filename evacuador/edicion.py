@@ -23,6 +23,7 @@ class Herramienta(str, Enum):
     INICIO = "inicio"
     SALIDA = "salida"
     BORRAR = "borrar"
+    GRUPO = "grupo"      # solo en el editor del AG (ver edicion_ag.py)
 
 
 class DisenoInvalido(ValueError):
