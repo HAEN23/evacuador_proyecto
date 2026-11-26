@@ -6,7 +6,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent / "evacuador"
 NUCLEO = {"config", "modelos", "ucs", "generador", "io_csv", "experimentos",
           "visualizacion", "edicion", "cli", "genetico", "io_grupos",
-          "experimentos_ag", "visualizacion_ag"}
+          "experimentos_ag", "visualizacion_ag", "edicion_ag"}
 CAPAS_NUCLEO = {"config", "modelos", "ucs", "generador", "io_csv", "edicion"}
 
 
@@ -62,6 +62,11 @@ class TestArquitectura(unittest.TestCase):
         self.assertNotIn("resultado", {_top(n) for n in _importa(RAIZ / "gui" / "editor.py")})
         self.assertNotIn("editor", {_top(n) for n in _importa(RAIZ / "gui" / "resultado.py")})
         self.assertNotIn("editor", {_top(n) for n in _importa(RAIZ / "gui" / "tema.py")})
+        # Vistas del AG: el editor no conoce la vista de resultados ni al revés.
+        for modulo, prohibidos in (("editor_ag", {"app", "resultado", "resultado_ag"}),
+                                   ("resultado_ag", {"app", "editor", "editor_ag"})):
+            propios = {_top(n) for n in _importa(RAIZ / "gui" / f"{modulo}.py")}
+            self.assertFalse(propios & prohibidos, modulo)
 
     def test_el_nucleo_no_usa_print_salvo_cli_y_visualizacion(self):
         for ruta in RAIZ.glob("*.py"):

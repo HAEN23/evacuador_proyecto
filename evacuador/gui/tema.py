@@ -168,3 +168,15 @@ def configurar_estilos(raiz: tk.Misc, f: str) -> None:
             background=c["secundario_hover"], bordercolor=c["borde"],
             lightcolor=c["secundario_hover"], darkcolor=c["secundario_hover"],
             arrowcolor=c["texto_secundario"], gripcount=0)
+
+    # Pestañas y tablas de la vista de resultados del AG.
+    estilo.configure("AG.TNotebook", background=c["fondo"], borderwidth=0)
+    estilo.configure("AG.TNotebook.Tab", font=(f, 10), padding=(14, 7),
+                     background=c["secundario"], foreground=c["texto_secundario"])
+    estilo.map("AG.TNotebook.Tab",
+               background=[("selected", c["superficie"])],
+               foreground=[("selected", c["primario"])])
+    estilo.configure("AG.Treeview", font=(f, 10), rowheight=26,
+                     background=c["superficie"], fieldbackground=c["superficie"])
+    estilo.configure("AG.Treeview.Heading", font=(f, 10, "bold"),
+                     background=c["secundario"], foreground=c["primario"])

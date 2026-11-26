@@ -61,7 +61,7 @@ class EditorEscenarios(ttk.Frame):
         self._al_calcular = al_calcular
         self._al_volver = al_volver
 
-        self._diseno = DisenoEscenario(FILAS_POR_DEFECTO, COLUMNAS_POR_DEFECTO)
+        self._diseno = self._crear_diseno()
         self._filas = tk.IntVar(value=FILAS_POR_DEFECTO)
         self._columnas = tk.IntVar(value=COLUMNAS_POR_DEFECTO)
         self._herramienta = tk.StringVar(value=Herramienta.BLOQUEADA.value)
@@ -82,6 +82,18 @@ class EditorEscenarios(ttk.Frame):
         self._crear_lienzo()
         self._dibujar()
         self._registrar_atajos()
+
+    def _crear_diseno(self) -> DisenoEscenario:
+        """Modelo del diseño en edición. El editor del AG lo reemplaza por ``DisenoAG``."""
+        return DisenoEscenario(FILAS_POR_DEFECTO, COLUMNAS_POR_DEFECTO)
+
+    def _marca(self, pos: Posicion) -> Optional[tuple[str, str]]:
+        """Texto y color del círculo que se dibuja sobre una celda (o None)."""
+        if pos == self._diseno.inicio:
+            return ("I", COLOR_INICIO)
+        if pos in self._diseno.salidas:
+            return ("S", COLOR_SALIDA)
+        return None
 
     def _registrar_atajos(self) -> None:
         """Atajos de teclado, activos solo mientras el editor está visible."""
@@ -405,11 +417,7 @@ class EditorEscenarios(ttk.Frame):
                            else color_celda(valor))
                 lienzo.create_rectangle(x0, y0, x0 + t, y0 + t, fill=relleno,
                                         outline=COLORES["borde"])
-                marca = None
-                if (f, c) == diseno.inicio:
-                    marca = ("I", COLOR_INICIO)
-                elif (f, c) in diseno.salidas:
-                    marca = ("S", COLOR_SALIDA)
+                marca = self._marca((f, c))
                 if marca:
                     m = max(2, t // 6)
                     lienzo.create_oval(x0 + m, y0 + m, x0 + t - m, y0 + t - m,
@@ -426,8 +434,12 @@ class EditorEscenarios(ttk.Frame):
         if pos is None or pos == self._ultima_celda:
             return
         self._ultima_celda = pos
-        self._diseno.aplicar(self._herramienta.get(), pos, int(self._nivel_humo.get()))
+        self._aplicar(pos)
         self._dibujar()
+
+    def _aplicar(self, pos: Posicion) -> None:
+        """Aplica la herramienta seleccionada sobre el modelo del diseño."""
+        self._diseno.aplicar(self._herramienta.get(), pos, int(self._nivel_humo.get()))
 
     def _al_mover(self, evento: tk.Event) -> None:
         pos = self._celda_en(evento.x, evento.y)

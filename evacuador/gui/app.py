@@ -8,6 +8,10 @@ ventana que alterna entre tres vistas:
 * Editor: diseño interactivo de escenarios (módulo ``editor``).
 * Resultado: mapa de riesgo con la ruta calculada por Búsqueda de Costo
   Uniforme (UCS) y sus métricas (módulo ``resultado``).
+* Editor del AG: escenario más grupos de personas y parámetros del algoritmo
+  genético (módulo ``editor_ag``).
+* Resultado del AG: las tres mejores ubicaciones de salidas, la evolución de la
+  aptitud, la curva de evacuación y las tablas (módulo ``resultado_ag``).
 
 Proyecto desarrollado para la asignatura Fundamentos de Inteligencia
 Artificial, Universidad Politécnica de Chiapas.
@@ -23,20 +27,23 @@ from typing import Final, Optional
 
 from ..config import NOMBRE_SISTEMA
 from ..io_csv import cargar_csv
+from ..genetico import Grupo, ParametrosAG, ResultadoAG
 from ..modelos import Escenario, Resultado
 from ..ucs import buscar_ucs
 from .dialogos import guardar_escenario_como
 from .editor import EditorEscenarios
+from .editor_ag import EditorAG
 from .resultado import VistaResultado
+from .resultado_ag import VistaResultadoAG
 from .tema import (ANCHO_TEXTO, COLORES, configurar_estilos, elegir_fuente,
                    muestra_color, muestra_degradado)
 
 TITULO_APP: Final[str] = NOMBRE_SISTEMA
 SUBTITULO_APP: Final[str] = (
-    "Planificación de rutas de evacuación seguras mediante "
-    "Búsqueda de Costo Uniforme"
+    "Rutas de evacuación con Búsqueda de Costo Uniforme y ubicación de "
+    "salidas de emergencia con algoritmos genéticos"
 )
-VERSION_APP: Final[str] = "1.0.0"
+VERSION_APP: Final[str] = "2.0.0"
 INSTITUCION: Final[str] = "Universidad Politécnica de Chiapas"
 ASIGNATURA: Final[str] = "Fundamentos de Inteligencia Artificial"
 
@@ -67,6 +74,8 @@ class AplicacionEvacuacion:
         self._vista_inicio: Optional[ttk.Frame] = None
         self._editor: Optional[ttk.Frame] = None
         self._vista_resultado: Optional[ttk.Frame] = None
+        self._editor_ag: Optional[EditorAG] = None
+        self._vista_resultado_ag: Optional[VistaResultadoAG] = None
         self._detalles_encabezado: list[ttk.Label] = []
 
         self._configurar_ventana()
@@ -105,6 +114,7 @@ class AplicacionEvacuacion:
         """Asocia los atajos de teclado a las acciones principales."""
         self.raiz.bind_all("<Control-o>", lambda _e: self.abrir_escenario())
         self.raiz.bind_all("<Control-n>", lambda _e: self.mostrar_editor())
+        self.raiz.bind_all("<Control-g>", lambda _e: self.mostrar_editor_ag())
         self.raiz.bind_all("<Control-s>", lambda _e: self.guardar_escenario())
         self.raiz.bind_all("<Control-q>", lambda _e: self.salir())
         self.raiz.bind_all("<F1>", lambda _e: self.mostrar_formato_csv())
@@ -127,6 +137,16 @@ class AplicacionEvacuacion:
         archivo.add_separator()
         archivo.add_command(label="Salir", accelerator="Ctrl+Q", command=self.salir)
         barra.add_cascade(label="Archivo", menu=archivo)
+
+        genetico = tk.Menu(barra)
+        genetico.add_command(label="Diseñar escenario y grupos", accelerator="Ctrl+G",
+                             command=self.mostrar_editor_ag)
+        genetico.add_command(label="Abrir escenario CSV para el AG…",
+                             command=self.abrir_escenario_ag)
+        genetico.add_separator()
+        genetico.add_command(label="Formato de los grupos CSV",
+                             command=self.mostrar_formato_grupos)
+        barra.add_cascade(label="Algoritmo genético", menu=genetico)
 
         ayuda = tk.Menu(barra)
         ayuda.add_command(label="Formato del escenario CSV", accelerator="F1",
@@ -217,6 +237,26 @@ class AplicacionEvacuacion:
         ttk.Label(tarjeta, text="Atajo: Ctrl + N",
                   style="Hint.TLabel").grid(row=6, column=0, sticky="e", pady=(4, 0))
 
+        ttk.Separator(tarjeta, orient="horizontal").grid(row=7, column=0, sticky="ew",
+                                                         pady=18)
+        ttk.Label(tarjeta, text="Ubicar salidas de emergencia",
+                  style="SectionTitle.TLabel").grid(row=8, column=0, sticky="w")
+        ttk.Label(
+            tarjeta,
+            text="Coloque grupos de personas sobre el escenario y deje que el algoritmo "
+                 "genético decida dónde poner k salidas para que salgan más personas, "
+                 "con menos riesgo, en menos tiempo y sin aglomeraciones.",
+            style="Body.TLabel", wraplength=ANCHO_TEXTO, justify="left",
+        ).grid(row=9, column=0, sticky="w", pady=(10, 20))
+        ttk.Button(tarjeta, text="Diseñar escenario y grupos (AG)",
+                   style="Primary.TButton", cursor="hand2",
+                   command=self.mostrar_editor_ag).grid(row=10, column=0, sticky="ew")
+        ttk.Label(tarjeta, text="Atajo: Ctrl + G",
+                  style="Hint.TLabel").grid(row=11, column=0, sticky="e", pady=(4, 12))
+        ttk.Button(tarjeta, text="Abrir escenario CSV para el AG",
+                   style="Secondary.TButton", cursor="hand2",
+                   command=self.abrir_escenario_ag).grid(row=12, column=0, sticky="ew")
+
     def _crear_panel_referencia(self, padre: tk.Misc) -> None:
         """Panel derecho: codificación de celdas y parámetros del modelo."""
         tarjeta = self._crear_tarjeta(padre, columna=1, padx=(12, 0))
@@ -255,6 +295,7 @@ class AplicacionEvacuacion:
             ("Movimientos", "Norte, Sur, Este y Oeste"),
             ("Criterio", "Minimizar el riesgo acumulado g(n)"),
             ("Entorno", "Determinista, estático, discreto y observable"),
+            ("AG", "k salidas, aptitud O1 · 1/(1+O2) · 1/(1+O3) · 1/(1+O4)"),
         )
         for i, (termino, valor) in enumerate(parametros, start=7):
             ttk.Label(tarjeta, text=termino, style="Term.TLabel").grid(
@@ -279,7 +320,8 @@ class AplicacionEvacuacion:
     def _mostrar_vista(self, vista: ttk.Frame, compacto: bool) -> None:
         """Muestra una vista en el área de trabajo y oculta las demás."""
         # Las vistas comparten el mismo espacio; grid_remove las oculta sin destruirlas.
-        for otra in (self._vista_inicio, self._editor, self._vista_resultado):
+        for otra in (self._vista_inicio, self._editor, self._vista_resultado,
+                     self._editor_ag, self._vista_resultado_ag):
             if otra is not None and otra is not vista:
                 otra.grid_remove()
         vista.grid(row=0, column=0, sticky="nsew")
@@ -344,6 +386,50 @@ class AplicacionEvacuacion:
         self._vista_resultado.configure(padding=24)
         self._mostrar_vista(self._vista_resultado, compacto=True)
 
+    def mostrar_editor_ag(self, escenario: Optional[Escenario] = None) -> None:
+        """Muestra el editor del AG, opcionalmente con un escenario cargado."""
+        if self._editor_ag is None:
+            self._editor_ag = EditorAG(self._area, estado=self._estado,
+                                       al_optimizar=self.mostrar_resultado_ag,
+                                       al_volver=self.mostrar_inicio)
+            self._editor_ag.configure(padding=24)
+        if escenario is not None:
+            self._editor_ag.cargar_escenario(escenario)
+        self._mostrar_vista(self._editor_ag, compacto=True)
+        self._estado.set("Algoritmo genético: pinte el escenario, coloque grupos de personas "
+                         "y ejecute el algoritmo (F5).")
+
+    def mostrar_resultado_ag(self, escenario: Escenario, grupos: list[Grupo],
+                             params: ParametrosAG, resultado: ResultadoAG) -> None:
+        """Muestra las tres mejores ubicaciones de salidas, gráficas y tablas del AG."""
+        if self._vista_resultado_ag is not None:
+            self._vista_resultado_ag.destroy()
+        self._vista_resultado_ag = VistaResultadoAG(
+            self._area, escenario, grupos, params, resultado,
+            al_volver=self.mostrar_inicio, al_editar=self.mostrar_editor_ag,
+            al_guardar=lambda: self._guardar_resultado(escenario, "escenario_ag.csv"),
+            al_guardar_grupos=self._editor_ag.guardar_grupos)
+        self._vista_resultado_ag.configure(padding=24)
+        self._mostrar_vista(self._vista_resultado_ag, compacto=True)
+
+    def abrir_escenario_ag(self) -> None:
+        """Pide un CSV de escenario y lo abre en el editor del AG."""
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar escenario CSV para el AG",
+            filetypes=[("Archivos CSV", "*.csv"), ("Todos los archivos", "*.*")])
+        if not ruta:
+            return
+        try:
+            escenario = cargar_csv(ruta)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror("Error al abrir el escenario",
+                                 f"No fue posible abrir «{os.path.basename(ruta)}».\n\n"
+                                 f"Detalle técnico: {exc}")
+            return
+        self.mostrar_editor_ag(escenario)
+        self._estado.set(f"Escenario «{os.path.basename(ruta)}» cargado. Agregue grupos "
+                         "(Abrir grupos CSV, Generar al azar o la herramienta Grupo).")
+
     # -- Acciones de la interfaz -------------------------------------------
 
     def guardar_escenario(self) -> None:
@@ -353,6 +439,11 @@ class AplicacionEvacuacion:
             self._editor.guardar()
         elif self._vista_resultado is not None and self._vista_resultado.winfo_ismapped():
             self._vista_resultado.guardar()
+        elif self._editor_ag is not None and self._editor_ag.winfo_ismapped():
+            self._editor_ag.guardar()
+        elif (self._vista_resultado_ag is not None
+              and self._vista_resultado_ag.winfo_ismapped()):
+            self._vista_resultado_ag.guardar()
         else:
             messagebox.showinfo(
                 "Guardar escenario",
@@ -428,6 +519,20 @@ class AplicacionEvacuacion:
             "    2 – 99   Humo o tóxico; el valor es el costo de transición",
         )
 
+    def mostrar_formato_grupos(self) -> None:
+        """Muestra la especificación del formato de grupos CSV."""
+        messagebox.showinfo(
+            "Formato de los grupos CSV",
+            "Una fila por grupo de personas, con encabezado:\n\n"
+            "    fila,columna,tamano\n"
+            "    3,5,4\n"
+            "    10,2,1\n\n"
+            "fila y columna empiezan en 0; tamano es el número de personas (1 o más).\n"
+            "Un grupo no puede estar sobre una celda bloqueada.\n\n"
+            "Ejemplos en la carpeta data/: grupos_a.csv … grupos_d.csv, para los "
+            "escenarios a_sin_humo.csv … d_mapa_grande.csv.",
+        )
+
     def mostrar_acerca_de(self) -> None:
         """Muestra la información general del sistema."""
         messagebox.showinfo(
@@ -436,6 +541,9 @@ class AplicacionEvacuacion:
             "Sistema inteligente que calcula la ruta de escape más segura dentro "
             "de una instalación industrial durante un incendio, priorizando "
             "rodear zonas con humo tóxico o fuego.\n\n"
+            "Versión 2: un algoritmo genético (EvacuAG) decide dónde colocar k salidas "
+            "de emergencia para evacuar a varios grupos de personas con el menor "
+            "riesgo, tiempo y aglomeración.\n\n"
             f"{ASIGNATURA}\n{INSTITUCION}",
         )
 
