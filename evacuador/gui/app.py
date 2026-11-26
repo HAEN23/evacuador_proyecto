@@ -115,6 +115,7 @@ class AplicacionEvacuacion:
         self.raiz.bind_all("<Control-o>", lambda _e: self.abrir_escenario())
         self.raiz.bind_all("<Control-n>", lambda _e: self.mostrar_editor())
         self.raiz.bind_all("<Control-g>", lambda _e: self.mostrar_editor_ag())
+        self.raiz.bind_all("<Control-O>", lambda _e: self.abrir_escenario_ag())
         self.raiz.bind_all("<Control-s>", lambda _e: self.guardar_escenario())
         self.raiz.bind_all("<Control-q>", lambda _e: self.salir())
         self.raiz.bind_all("<F1>", lambda _e: self.mostrar_formato_csv())
@@ -139,10 +140,10 @@ class AplicacionEvacuacion:
         barra.add_cascade(label="Archivo", menu=archivo)
 
         genetico = tk.Menu(barra)
-        genetico.add_command(label="Diseñar escenario y grupos", accelerator="Ctrl+G",
+        genetico.add_command(label="Abrir escenario existente (CSV)…",
+                             accelerator="Ctrl+Mayús+O", command=self.abrir_escenario_ag)
+        genetico.add_command(label="Crear nuevo escenario", accelerator="Ctrl+G",
                              command=self.mostrar_editor_ag)
-        genetico.add_command(label="Abrir escenario CSV para el AG…",
-                             command=self.abrir_escenario_ag)
         genetico.add_separator()
         genetico.add_command(label="Formato de los grupos CSV",
                              command=self.mostrar_formato_grupos)
@@ -186,24 +187,52 @@ class AplicacionEvacuacion:
         self._area.columnconfigure(0, weight=1)
         self._area.rowconfigure(0, weight=1)
 
-        # Vista de inicio: paneles de operación y referencia centrados.
-        self._vista_inicio = ttk.Frame(self._area, style="App.TFrame", padding=(56, 40))
+        # Vista de inicio: dos tarjetas de operación (UCS y AG) y la referencia debajo.
+        # Va dentro de un Canvas para poder desplazarla en pantallas pequeñas.
+        self._vista_inicio = ttk.Frame(self._area, style="App.TFrame")
         self._vista_inicio.columnconfigure(0, weight=1)
         self._vista_inicio.rowconfigure(0, weight=1)
-        contenido = ttk.Frame(self._vista_inicio, style="App.TFrame")
-        contenido.grid(row=0, column=0, sticky="n")
-        contenido.columnconfigure(0, weight=1, uniform="paneles", minsize=460)
-        contenido.columnconfigure(1, weight=1, uniform="paneles", minsize=460)
-        contenido.rowconfigure(0, weight=1)
+        lienzo = tk.Canvas(self._vista_inicio, bg=COLORES["fondo"], highlightthickness=0, bd=0)
+        barra = ttk.Scrollbar(self._vista_inicio, orient="vertical", command=lienzo.yview,
+                              style="Panel.Vertical.TScrollbar")
+        lienzo.configure(yscrollcommand=barra.set)
+        lienzo.grid(row=0, column=0, sticky="nsew")
+        barra.grid(row=0, column=1, sticky="ns")
+
+        contenido = ttk.Frame(lienzo, style="App.TFrame", padding=(32, 28))
+        contenido.columnconfigure(0, weight=1, uniform="paneles", minsize=440)
+        contenido.columnconfigure(1, weight=1, uniform="paneles", minsize=440)
+        ventana = lienzo.create_window(0, 0, window=contenido, anchor="n")
+
+        def ajustar(_evento: tk.Event) -> None:
+            # Centra el contenido y actualiza la zona desplazable al cambiar el tamaño.
+            ancho = max(lienzo.winfo_width(), contenido.winfo_reqwidth())
+            lienzo.coords(ventana, ancho / 2, 0)
+            lienzo.configure(scrollregion=(0, 0, ancho, contenido.winfo_reqheight()))
+
+        def desplazar(evento: tk.Event) -> None:
+            if contenido.winfo_reqheight() <= lienzo.winfo_height():
+                return
+            arriba = evento.num == 4 or getattr(evento, "delta", 0) > 0
+            lienzo.yview_scroll(-1 if arriba else 1, "units")
+
+        lienzo.bind("<Configure>", ajustar)
+        contenido.bind("<Configure>", ajustar)
+        for secuencia in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            lienzo.bind(secuencia, desplazar)
+            contenido.bind(secuencia, desplazar)
 
         self._crear_panel_operacion(contenido)
+        self._crear_panel_ag(contenido)
         self._crear_panel_referencia(contenido)
 
     @staticmethod
-    def _crear_tarjeta(padre: tk.Misc, columna: int, padx: tuple[int, int]) -> ttk.Frame:
+    def _crear_tarjeta(padre: tk.Misc, columna: int, padx: tuple[int, int], fila: int = 0,
+                       columnas: int = 1) -> ttk.Frame:
         """Crea un panel blanco con borde fino y devuelve su contenedor interno."""
         marco = tk.Frame(padre, bg=COLORES["borde"], bd=0)
-        marco.grid(row=0, column=columna, sticky="nsew", padx=padx)
+        marco.grid(row=fila, column=columna, columnspan=columnas, sticky="nsew", padx=padx,
+                   pady=(0 if fila == 0 else 24, 0))
         interior = ttk.Frame(marco, style="Card.TFrame", padding=(32, 28))
         interior.pack(fill="both", expand=True, padx=1, pady=1)
         interior.columnconfigure(0, weight=1)
@@ -237,70 +266,79 @@ class AplicacionEvacuacion:
         ttk.Label(tarjeta, text="Atajo: Ctrl + N",
                   style="Hint.TLabel").grid(row=6, column=0, sticky="e", pady=(4, 0))
 
-        ttk.Separator(tarjeta, orient="horizontal").grid(row=7, column=0, sticky="ew",
-                                                         pady=18)
+    def _crear_panel_ag(self, padre: tk.Misc) -> None:
+        """Panel derecho: las mismas acciones, para el algoritmo genético."""
+        tarjeta = self._crear_tarjeta(padre, columna=1, padx=(12, 0))
+
+        ttk.Label(tarjeta, text="ALGORITMO GENÉTICO",
+                  style="CardEyebrow.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(tarjeta, text="Ubicar salidas de emergencia",
-                  style="SectionTitle.TLabel").grid(row=8, column=0, sticky="w")
+                  style="SectionTitle.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 0))
         ttk.Label(
             tarjeta,
-            text="Coloque grupos de personas sobre el escenario y deje que el algoritmo "
-                 "genético decida dónde poner k salidas para que salgan más personas, "
-                 "con menos riesgo, en menos tiempo y sin aglomeraciones.",
+            text="Coloque grupos de personas sobre el escenario y el algoritmo genético "
+                 "decide dónde poner k salidas para que salgan más personas, con menos "
+                 "riesgo, en menos tiempo y sin aglomeraciones.",
             style="Body.TLabel", wraplength=ANCHO_TEXTO, justify="left",
-        ).grid(row=9, column=0, sticky="w", pady=(10, 20))
-        ttk.Button(tarjeta, text="Diseñar escenario y grupos (AG)",
+        ).grid(row=2, column=0, sticky="w", pady=(10, 24))
+
+        ttk.Button(tarjeta, text="Abrir escenario existente (CSV)",
                    style="Primary.TButton", cursor="hand2",
-                   command=self.mostrar_editor_ag).grid(row=10, column=0, sticky="ew")
-        ttk.Label(tarjeta, text="Atajo: Ctrl + G",
-                  style="Hint.TLabel").grid(row=11, column=0, sticky="e", pady=(4, 12))
-        ttk.Button(tarjeta, text="Abrir escenario CSV para el AG",
+                   command=self.abrir_escenario_ag).grid(row=3, column=0, sticky="ew")
+        ttk.Label(tarjeta, text="Atajo: Ctrl + Mayús + O",
+                  style="Hint.TLabel").grid(row=4, column=0, sticky="e", pady=(4, 12))
+
+        ttk.Button(tarjeta, text="Crear nuevo escenario",
                    style="Secondary.TButton", cursor="hand2",
-                   command=self.abrir_escenario_ag).grid(row=12, column=0, sticky="ew")
+                   command=self.mostrar_editor_ag).grid(row=5, column=0, sticky="ew")
+        ttk.Label(tarjeta, text="Atajo: Ctrl + G",
+                  style="Hint.TLabel").grid(row=6, column=0, sticky="e", pady=(4, 0))
 
     def _crear_panel_referencia(self, padre: tk.Misc) -> None:
-        """Panel derecho: codificación de celdas y parámetros del modelo."""
-        tarjeta = self._crear_tarjeta(padre, columna=1, padx=(12, 0))
-        tarjeta.columnconfigure(1, weight=1)
+        """Panel inferior: codificación de celdas (izquierda) y parámetros (derecha)."""
+        tarjeta = self._crear_tarjeta(padre, columna=0, padx=(0, 0), fila=1, columnas=2)
+        tarjeta.columnconfigure(0, weight=1, uniform="ref")
+        tarjeta.columnconfigure(1, weight=1, uniform="ref")
 
         ttk.Label(tarjeta, text="REFERENCIA",
                   style="CardEyebrow.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
-        ttk.Label(tarjeta, text="Codificación del escenario",
-                  style="SectionTitle.TLabel").grid(row=1, column=0, columnspan=2,
-                                                    sticky="w", pady=(4, 16))
 
+        codificacion = ttk.Frame(tarjeta, style="Card.TFrame")
+        codificacion.grid(row=1, column=0, sticky="nw", padx=(0, 24))
+        ttk.Label(codificacion, text="Codificación del escenario",
+                  style="SectionTitle.TLabel").grid(row=0, column=0, columnspan=2,
+                                                    sticky="w", pady=(4, 12))
         leyenda = (
-            (muestra_color(tarjeta, COLORES["celda_bloqueada"]), "0",
+            (muestra_color(codificacion, COLORES["celda_bloqueada"]), "0",
              "Celda bloqueada (pared o fuego letal)"),
-            (muestra_color(tarjeta, COLORES["celda_libre"]), "1",
+            (muestra_color(codificacion, COLORES["celda_libre"]), "1",
              "Celda libre y sin contaminación"),
-            (muestra_degradado(tarjeta), "2 – 99",
+            (muestra_degradado(codificacion), "2 – 99",
              "Humo o tóxico; el valor es el costo de transición"),
         )
-        for i, (muestra, valor, descripcion) in enumerate(leyenda, start=2):
+        for i, (muestra, valor, descripcion) in enumerate(leyenda, start=1):
             muestra.grid(row=i, column=0, sticky="w", pady=5)
-            fila = ttk.Frame(tarjeta, style="Card.TFrame")
+            fila = ttk.Frame(codificacion, style="Card.TFrame")
             fila.grid(row=i, column=1, sticky="w", padx=(12, 0))
             ttk.Label(fila, text=valor, style="Term.TLabel", width=7).pack(side="left")
             ttk.Label(fila, text=descripcion, style="Body.TLabel").pack(side="left")
 
-        ttk.Separator(tarjeta, orient="horizontal").grid(row=5, column=0, columnspan=2,
-                                                         sticky="ew", pady=18)
-
-        ttk.Label(tarjeta, text="Parámetros del modelo",
-                  style="Subsection.TLabel").grid(row=6, column=0, columnspan=2,
-                                                  sticky="w", pady=(0, 8))
+        modelo = ttk.Frame(tarjeta, style="Card.TFrame")
+        modelo.grid(row=1, column=1, sticky="nw")
+        ttk.Label(modelo, text="Parámetros del modelo",
+                  style="SectionTitle.TLabel").grid(row=0, column=0, columnspan=2,
+                                                    sticky="w", pady=(4, 12))
         parametros = (
-            ("Algoritmo", "Búsqueda de Costo Uniforme (UCS)"),
-            ("Tipo", "Búsqueda no informada, óptima y completa"),
+            ("Ruta", "Búsqueda de Costo Uniforme (UCS), óptima y completa"),
             ("Movimientos", "Norte, Sur, Este y Oeste"),
             ("Criterio", "Minimizar el riesgo acumulado g(n)"),
-            ("Entorno", "Determinista, estático, discreto y observable"),
-            ("AG", "k salidas, aptitud O1 · 1/(1+O2) · 1/(1+O3) · 1/(1+O4)"),
+            ("Salidas", "Algoritmo genético con k = 2, 3 o 4 salidas"),
+            ("Aptitud", "O1 · 1/(1+O2) · 1/(1+O3) · 1/(1+O4)"),
         )
-        for i, (termino, valor) in enumerate(parametros, start=7):
-            ttk.Label(tarjeta, text=termino, style="Term.TLabel").grid(
+        for i, (termino, valor) in enumerate(parametros, start=1):
+            ttk.Label(modelo, text=termino, style="Term.TLabel").grid(
                 row=i, column=0, sticky="w", pady=2)
-            ttk.Label(tarjeta, text=valor, style="Body.TLabel").grid(
+            ttk.Label(modelo, text=valor, style="Body.TLabel").grid(
                 row=i, column=1, sticky="w", padx=(12, 0), pady=2)
 
     def _crear_barra_estado(self) -> None:
