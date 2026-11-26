@@ -195,17 +195,20 @@ class VistaResultadoAG(ttk.Frame):
             cuaderno.add(self._fichas_mapas(cuaderno, Figure, vis), text="Mapas del top 3")
             graficas = (
                 ("Evolución",
-                 lambda f: vis.dibujar_evolucion(f, f.add_subplot(111), r)),
+                 lambda f: vis.dibujar_evolucion(f, f.add_subplot(111), r),
+                 texto_evolucion(r)),
                 ("Curva de evacuación",
-                 lambda f: vis.dibujar_curvas(f, f.add_subplot(111), r)),
+                 lambda f: vis.dibujar_curvas(f, f.add_subplot(111), r),
+                 texto_curvas(r)),
             )
             if self._manual is not None:
-                graficas += (("Sus salidas vs. AG", self._dibujar_comparacion),)
-            for titulo, dibujar in graficas:
+                graficas += (("Sus salidas vs. AG", self._dibujar_comparacion,
+                              texto_comparacion(r.mejor, self._manual)),)
+            for titulo, dibujar, texto in graficas:
                 figura = Figure(figsize=(9, 6), dpi=100, facecolor=COLORES["superficie"],
                                 layout="constrained")
                 dibujar(figura)
-                cuaderno.add(self._incrustar(cuaderno, figura), text=titulo)
+                cuaderno.add(self._incrustar(cuaderno, figura, texto), text=titulo)
 
         cuaderno.add(self._tabla(cuaderno, exp_ag.top3_csv(self._resultado)),
                      text="Tabla top 3")
@@ -219,7 +222,10 @@ class VistaResultadoAG(ttk.Frame):
             figura = Figure(figsize=(9, 6), dpi=100, facecolor=COLORES["superficie"],
                             layout="constrained")
             vis.dibujar_mapa_detallado(figura, self._escenario, self._grupos, conf, i)
-            fichas.add(self._incrustar(fichas, figura), text=f"Mapa #{i}")
+            texto = texto_mapa(conf, i, self._resultado.mejor,
+                               sum(g.tamano for g in self._grupos),
+                               self._params.ventana)
+            fichas.add(self._incrustar(fichas, figura, texto), text=f"Mapa #{i}")
         return fichas
 
     def _dibujar_comparacion(self, figura) -> None:
@@ -233,11 +239,20 @@ class VistaResultadoAG(ttk.Frame):
         vis.dibujar_configuracion(figura, derecha, self._escenario, self._grupos, manual,
                                   titulo=f"Sus salidas  ·  aptitud {manual.aptitud:.4f}")
 
-    def _incrustar(self, padre: tk.Misc, figura) -> tk.Frame:
-        """Integra una figura de matplotlib con su barra de navegación."""
+    def _incrustar(self, padre: tk.Misc, figura, explicacion: str = "") -> tk.Frame:
+        """Integra una figura de matplotlib con su barra de navegación y, a la
+        izquierda, la explicación de lo que muestra."""
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
         marco = tk.Frame(padre, bg=COLORES["superficie"])
+        if explicacion:
+            lateral = ttk.Frame(marco, style="Card.TFrame", width=270)
+            lateral.pack(side="left", fill="y", padx=(16, 0), pady=16)
+            lateral.pack_propagate(False)
+            ttk.Label(lateral, text="¿Qué estoy viendo?", style="Subsection.TLabel"
+                      ).pack(anchor="w", pady=(40, 8))
+            ttk.Label(lateral, text=explicacion, style="Body.TLabel", wraplength=255,
+                      justify="left").pack(anchor="w")
         lienzo = FigureCanvasTkAgg(figura, master=marco)
         barra = NavigationToolbar2Tk(lienzo, marco, pack_toolbar=False)
         barra.configure(background=COLORES["superficie"])
@@ -251,6 +266,14 @@ class VistaResultadoAG(ttk.Frame):
         lienzo.get_tk_widget().pack(side="top", fill="both", expand=True, padx=12, pady=12)
         lienzo.draw()
         self._lienzos.append(lienzo)
+        if explicacion:
+            def acomodar(evento: tk.Event) -> None:
+                # En ventanas angostas el texto aplastaría la gráfica: se oculta.
+                if evento.width < 950:
+                    lateral.pack_forget()
+                elif not lateral.winfo_manager():
+                    lateral.pack(side="left", fill="y", padx=(16, 0), pady=16, before=barra)
+            marco.bind("<Configure>", acomodar, add="+")
         return marco
 
     @staticmethod
@@ -307,3 +330,83 @@ class VistaResultadoAG(ttk.Frame):
                             f"Se guardaron en «{os.path.normpath(carpeta)}»:\n\n"
                             + "\n".join(archivos), parent=ventana)
 
+
+
+# -- Explicaciones del panel izquierdo (cambian con la ficha y con los datos) -----
+
+_PUESTOS = {1: "la mejor", 2: "la segunda mejor", 3: "la tercera mejor"}
+
+
+def texto_mapa(conf: Configuracion, puesto: int, mejor: Configuracion, personas: int,
+               ventana: int) -> str:
+    """Explicación sencilla de una configuración del top 3."""
+    salidas = "\n".join(f"  • ({f}, {c}): llegan {n} personas"
+                         for (f, c), n in zip(conf.salidas, conf.personas_por_salida))
+    partes = [
+        f"Esta es {_PUESTOS.get(puesto, f'la #{puesto}')} ubicación de salidas que "
+        f"encontró el algoritmo (aptitud {conf.aptitud:.4f}).",
+        f"Salidas (fila, columna):\n{salidas}",
+        f"Sale el {conf.o1:.0%} de las {personas} personas. La mitad sale en "
+        f"{conf.t50} s, el 90 % en {conf.t90} s y el último grupo en {conf.t100} s.",
+        f"En su camino, cada persona respira en promedio {conf.riesgo_promedio:.0f} "
+        f"unidades de tóxico.",
+        f"En la salida más llena llegan hasta {conf.aglomeracion_max} personas en "
+        f"{ventana} s.",
+    ]
+    if conf.o1 < 1:
+        partes.append("Las X rojas son grupos que no pueden llegar a ninguna salida.")
+    if puesto > 1:
+        partes.append(f"Su aptitud es {mejor.aptitud - conf.aptitud:.4f} menor que la "
+                      f"del mapa #1.")
+    partes.append("Cómo leer el mapa: amarillo es aire limpio y rojo es mucho humo; "
+                  "negro es muro; los círculos verdes son grupos (más grandes, más "
+                  "personas); las estrellas son las salidas y las líneas, el camino "
+                  "de cada grupo.")
+    return "\n\n".join(partes)
+
+
+def texto_evolucion(resultado: ResultadoAG) -> str:
+    """Explicación de la gráfica de aptitud por generación."""
+    h = resultado.historial
+    inicial, final = h[0].aptitud_mejor, h[-1].aptitud_mejor
+    ultima_mejora = max((g.numero for g, ant in zip(h[1:], h) if
+                         g.aptitud_mejor > ant.aptitud_mejor), default=0)
+    mejora = (f"La mejor aptitud subió de {inicial:.4f} a {final:.4f}. La última "
+              f"mejora fue en la generación {ultima_mejora}."
+              if final > inicial else
+              f"La mejor aptitud ya era {final:.4f} desde el inicio y no mejoró.")
+    return ("Muestra cómo fue aprendiendo el algoritmo, generación tras generación.\n\n"
+            "• Línea continua: la mejor solución de cada generación.\n"
+            "• Línea discontinua: el promedio de la población.\n"
+            "• Línea punteada: la peor.\n\n"
+            f"{mejora}\n\nSi la línea continua se queda plana al final, el algoritmo "
+            "ya encontró una buena solución y más generaciones casi no ayudarían.")
+
+
+def texto_curvas(resultado: ResultadoAG) -> str:
+    """Explicación de las curvas de personas evacuadas contra tiempo."""
+    lineas = "\n".join(
+        f"  • #{i}: el 90 % sale en {c.t90} s y todos en {c.t100} s"
+        if c.curva_evacuacion else f"  • #{i}: nadie llega a una salida"
+        for i, c in enumerate(resultado.top3, start=1))
+    return ("Cada línea es una de las 3 mejores ubicaciones de salidas. Indica qué "
+            "porcentaje de personas ya salió en cada segundo.\n\n"
+            "Cada escalón es un grupo que llega a su salida. Mientras más a la "
+            "izquierda suba la línea, más rápido se evacua.\n\n" + lineas)
+
+
+def texto_comparacion(ag: Configuracion, manual: Configuracion) -> str:
+    """Explicación de la comparación entre las salidas del AG y las del editor."""
+    if manual.aptitud > ag.aptitud:
+        veredicto = "Sus salidas obtuvieron mejor aptitud que las del algoritmo."
+    elif manual.aptitud == ag.aptitud:
+        veredicto = "Sus salidas y las del algoritmo empatan."
+    else:
+        veredicto = (f"Las salidas del algoritmo son mejores: su aptitud es "
+                     f"{ag.aptitud - manual.aptitud:.4f} mayor.")
+    return ("A la izquierda está la mejor ubicación que encontró el algoritmo; a la "
+            "derecha, las salidas que usted colocó en el editor. Ambas se califican "
+            "igual.\n\n"
+            f"• Algoritmo: sale el {ag.o1:.0%}, 90 % en {ag.t90} s.\n"
+            f"• Sus salidas: sale el {manual.o1:.0%}, 90 % en {manual.t90} s.\n\n"
+            + veredicto)
