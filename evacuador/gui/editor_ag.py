@@ -186,11 +186,14 @@ class EditorAG(EditorEscenarios):
         poner(ttk.Label(panel, text="Salidas de emergencia", style="Subsection.TLabel"),
               sticky="w", pady=(0, 2))
         poner(ttk.Label(panel, text="Herramienta «Salida de emergencia», o al azar: el "
-                                    "botón también sortea k y la distancia mínima y los "
-                                    "pone en los parámetros. Solo en celdas libres.",
+                                    "primer botón también sortea k y la distancia mínima; "
+                                    "el segundo usa los que usted escriba en los "
+                                    "parámetros. Solo en celdas libres.",
                         style="Hint.TLabel", wraplength=300, justify="left"),
               sticky="w", pady=(0, 8))
         boton("Generar salidas al azar", self.generar_salidas_azar)
+        boton("Generar salidas con mi configuración", self.generar_salidas_config,
+              pady=(8, 0))
         boton("Quitar todas las salidas", self.quitar_salidas, pady=(8, 0))
         poner(ttk.Separator(panel), pady=16)
 
@@ -320,6 +323,20 @@ class EditorAG(EditorEscenarios):
         self._d_min.set(str(d_min))
         self._dibujar()
         self._estado.set(f"Al azar: k = {k}, distancia mínima = {d_min}. Salidas: "
+                         + " ".join(f"({f}, {c})" for f, c in self._diseno.salidas))
+
+    def generar_salidas_config(self) -> None:
+        """Coloca salidas al azar con la k y la distancia mínima del panel."""
+        try:
+            params = self._leer_parametros()
+            self._diseno.generar_salidas(params.k, params.d_min, random.randrange(10**9))
+        except ValueError as exc:
+            messagebox.showerror("No se pudieron generar las salidas", str(exc),
+                                 parent=self.winfo_toplevel())
+            return
+        self._dibujar()
+        self._estado.set(f"Con su configuración: k = {params.k}, distancia mínima = "
+                         f"{params.d_min}. Salidas: "
                          + " ".join(f"({f}, {c})" for f, c in self._diseno.salidas))
 
     def quitar_salidas(self) -> None:
