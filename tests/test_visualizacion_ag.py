@@ -7,7 +7,7 @@ from pathlib import Path
 from evacuador import cli
 from evacuador.genetico import Grupo, ParametrosAG, optimizar
 from evacuador.modelos import Escenario
-from evacuador.visualizacion_ag import guardar_figuras, rutas_grupos
+from evacuador.visualizacion_ag import dibujar_mapa_detallado, guardar_figuras, rutas_grupos
 
 HAY_MATPLOTLIB = importlib.util.find_spec("matplotlib") is not None
 DATA = Path(__file__).resolve().parent.parent / "data"
@@ -34,6 +34,17 @@ class TestFiguras(unittest.TestCase):
             self.assertEqual([r.name for r in rutas],
                              ["evolucion_aptitud.png", "top3_mapa.png", "curva_evacuacion.png"])
             self.assertTrue(all(r.stat().st_size > 0 for r in rutas))
+
+    def test_mapa_detallado_marca_cada_celda_y_cada_salida(self):
+        from matplotlib.figure import Figure
+
+        res = optimizar(ESC, [(0, 1, 2)],
+                        ParametrosAG(k=2, d_min=3, tam_poblacion=4, generaciones=3, semilla=1))
+        figura = Figure()
+        dibujar_mapa_detallado(figura, ESC, [(0, 1, 2)], res.mejor, 1)
+        ejes = figura.axes[0]
+        self.assertEqual(list(ejes.get_xticks()), list(range(5)))
+        self.assertEqual(len(ejes.texts), 2)   # una etiqueta por salida
 
     def test_cli_optimizar_con_salida_y_grafico(self):
         with tempfile.TemporaryDirectory() as tmp:

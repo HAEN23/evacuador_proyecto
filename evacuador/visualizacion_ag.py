@@ -118,6 +118,36 @@ def dibujar_top3(figura, escenario: Escenario, grupos, resultado: ResultadoAG) -
                   fontsize=9, frameon=False)
 
 
+def dibujar_mapa_detallado(figura, escenario: Escenario, grupos, conf: Configuracion,
+                           puesto: int) -> None:
+    """Una sola configuración a tamaño completo: numeración de cada celda, cuadrícula y
+    las personas que llegan a cada salida."""
+    import matplotlib.patches as mpatches
+
+    ejes = figura.add_subplot(111)
+    dibujar_configuracion(figura, ejes, escenario, grupos, conf,
+                          titulo=f"#{puesto}  ·  aptitud {conf.aptitud:.4f}  ·  "
+                                 f"salen {100 * conf.o1:.0f} %  ·  T90 {conf.t90} s")
+    filas, columnas = len(escenario.grid), len(escenario.grid[0])
+    ejes.set_xticks(range(columnas))
+    ejes.set_yticks(range(filas))
+    ejes.tick_params(labelsize=8)
+    ejes.set_xticks([c - 0.5 for c in range(1, columnas)], minor=True)
+    ejes.set_yticks([f - 0.5 for f in range(1, filas)], minor=True)
+    ejes.grid(which="minor", color="white", lw=0.5, alpha=0.6)
+    ejes.tick_params(which="minor", length=0)
+    for (f, c), n in zip(conf.salidas, conf.personas_por_salida):
+        ejes.annotate(f"({f},{c})  {n} pers.", (c, f),
+                      xytext=(0, -16 if f == 0 else 14),  # en la fila 0 taparía el título
+                      textcoords="offset points", ha="center", va="center", fontsize=9,
+                      fontweight="bold", color=COLOR_SALIDA, zorder=6,
+                      bbox=dict(boxstyle="round,pad=0.2", fc="white", ec=COLOR_SALIDA, lw=0.8))
+    manejadores, _ = ejes.get_legend_handles_labels()
+    manejadores.append(mpatches.Patch(color=COLOR_BLOQUEADA, label="Muro"))
+    figura.legend(handles=manejadores, loc="outside lower center", ncol=2,
+                  fontsize=9, frameon=False)
+
+
 def dibujar_curvas(figura, ejes, resultado: ResultadoAG) -> None:
     """Porcentaje acumulado de personas evacuadas contra segundos, una curva por puesto."""
     for i, conf in enumerate(resultado.top3, start=1):

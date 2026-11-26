@@ -192,9 +192,8 @@ class VistaResultadoAG(ttk.Frame):
             cuaderno.add(aviso, text="Gráficas")
         else:
             r = self._resultado
+            cuaderno.add(self._fichas_mapas(cuaderno, Figure, vis), text="Mapas del top 3")
             graficas = (
-                ("Top 3 en el mapa",
-                 lambda f: vis.dibujar_top3(f, self._escenario, self._grupos, r)),
                 ("Evolución",
                  lambda f: vis.dibujar_evolucion(f, f.add_subplot(111), r)),
                 ("Curva de evacuación",
@@ -212,6 +211,16 @@ class VistaResultadoAG(ttk.Frame):
                      text="Tabla top 3")
         cuaderno.add(self._tabla(cuaderno, exp_ag.historial_csv(self._resultado)),
                      text="Por generación")
+
+    def _fichas_mapas(self, padre: tk.Misc, Figure, vis) -> ttk.Notebook:
+        """Una ficha por cada configuración del top 3, con su mapa a tamaño completo."""
+        fichas = ttk.Notebook(padre, style="AG.TNotebook")
+        for i, conf in enumerate(self._resultado.top3, start=1):
+            figura = Figure(figsize=(9, 6), dpi=100, facecolor=COLORES["superficie"],
+                            layout="constrained")
+            vis.dibujar_mapa_detallado(figura, self._escenario, self._grupos, conf, i)
+            fichas.add(self._incrustar(fichas, figura), text=f"Mapa #{i}")
+        return fichas
 
     def _dibujar_comparacion(self, figura) -> None:
         """La mejor configuración del AG junto a las salidas colocadas en el editor."""
