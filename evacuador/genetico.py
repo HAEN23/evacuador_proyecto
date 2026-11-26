@@ -3,13 +3,18 @@
 Núcleo sin interfaz: no importa tkinter ni gui. Reutiliza `buscar_ucs` como
 evaluador de rutas y no modifica el resto del sistema.
 
-Individuo: lista de 2k reales [x1, y1, ..., xk, yk], cada gen en [0, 1].
+Individuo: lista de 2k reales [x1, y1, ..., xk, yk], cada gen en [0, 1]
+(la posición de maniobra de cada salida).
+
+Modelo de evacuación: cada grupo se mueve como una sola entidad con un tamaño
+(personas). Recorrer una casilla toma 1 segundo. El UCS elige la ruta de menor
+riesgo y sobre esa ruta se mide el tiempo.
+
 Aptitud:   O1 · 1/(1+O2) · 1/(1+O3) · 1/(1+O4)   (ver `evaluar`).
 """
 from __future__ import annotations
 
 import random
-import statistics
 from dataclasses import dataclass
 
 from .modelos import Escenario, Posicion
@@ -17,14 +22,26 @@ from .ucs import buscar_ucs
 
 # Valores de k permitidos por la propuesta (conjunto K).
 K_PERMITIDOS = (2, 3, 4)
-# Cantidad de configuraciones al azar y semilla fija con que se calcula R_ref.
-CONFIGS_R_REF = 30
-SEMILLA_R_REF = 0
+# Cantidad de configuraciones al azar y semilla fija con que se calculan R_ref y T_ref.
+CONFIGS_REF = 30
+SEMILLA_REF = 0
 # Valor de celda libre y sin humo: solo ahí se puede colocar una salida.
 CELDA_LIBRE = 1
 
 
 # --- Datos de entrada y de salida -------------------------------------------
+
+@dataclass(frozen=True)
+class Grupo:
+    """Un grupo de personas que se mueve como una sola entidad."""
+
+    celda: Posicion
+    tamano: int = 1
+
+    def __post_init__(self) -> None:
+        if self.tamano < 1:
+            raise ValueError("El tamaño de un grupo debe ser al menos 1")
+
 
 @dataclass(frozen=True)
 class ParametrosAG:
@@ -40,6 +57,8 @@ class ParametrosAG:
     generaciones: int = 100
     k: int = 3
     d_min: int = 3
+    p_evac: float = 0.90      # porcentaje de personas cuyo tiempo de salida se optimiza
+    ventana: int = 5          # segundos que abarca una aglomeración
     semilla: int | None = None
 
     def __post_init__(self) -> None:
@@ -57,6 +76,10 @@ class ParametrosAG:
             raise ValueError("d_min debe ser al menos 1")
         if self.sigma <= 0:
             raise ValueError("sigma debe ser positivo")
+        if not 0 < self.p_evac <= 1:
+            raise ValueError("p_evac debe estar en (0, 1]")
+        if self.ventana < 1:
+            raise ValueError("ventana debe ser al menos 1 segundo")
         for nombre in ("p_cruza", "p_mut_ind", "p_mut_gen"):
             if not 0 <= getattr(self, nombre) <= 1:
                 raise ValueError(f"{nombre} debe estar en [0, 1]")
@@ -67,14 +90,20 @@ class Configuracion:
     """Una ubicación de salidas ya evaluada con sus cuatro objetivos."""
 
     salidas: tuple[Posicion, ...]            # (fila, col), ordenadas
-    o1: float                                # cobertura, en [0, 1]
-    o2: float                                # riesgo promedio / R_ref
-    o3: float                                # riesgo máximo / R_ref
-    o4: float                                # desbalance, en [0, sqrt(k-1)]
+    o1: float                                # personas que salen / personas totales
+    o2: float                                # riesgo promedio por persona / R_ref
+    o3: float                                # T_p / T_ref
+    o4: float                                # aglomeración máxima / personas que salen
     aptitud: float
-    riesgo_promedio: float
-    riesgo_max: float
-    ocupantes_por_salida: tuple[int, ...]    # mismo orden que `salidas`
+    riesgo_promedio: float                   # por persona, sin normalizar
+    riesgo_max: float                        # el del grupo con más riesgo (informativo)
+    personas_por_salida: tuple[int, ...]     # mismo orden que `salidas`
+    t50: int                                 # segundos hasta que sale el 50 %
+    t90: int                                 # segundos hasta que sale el 90 %
+    t100: int                                # segundos hasta que sale el último grupo
+    aglomeracion_max: int                    # personas en la peor ventana de una salida
+    # (segundo, fracción acumulada de las personas totales) cada vez que salen grupos
+    curva_evacuacion: tuple[tuple[int, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -101,15 +130,18 @@ class ResultadoAG:
 
 @dataclass(frozen=True)
 class ProblemaAG:
-    """Datos fijos del problema: escenario, ocupantes y constantes derivadas."""
+    """Datos fijos del problema: escenario, grupos y constantes derivadas."""
 
     grid: tuple[tuple[int, ...], ...]
-    ocupantes: tuple[Posicion, ...]
+    grupos: tuple[Grupo, ...]
     validas: tuple[Posicion, ...]            # celdas con valor 1, en orden fila-columna
     validas_set: frozenset[Posicion]
     k: int
     d_min: int
+    p_evac: float
+    ventana: int
     r_ref: float
+    t_ref: float
 
     @property
     def filas(self) -> int:
@@ -130,8 +162,20 @@ class _Individuo:
         return self.conf.aptitud
 
 
-# Configuración de un individuo que no se pudo reparar: aptitud 0.
-_INVALIDA = Configuracion((), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ())
+@dataclass(frozen=True)
+class _Medidas:
+    """Magnitudes físicas de unas salidas, antes de normalizar con R_ref y T_ref."""
+
+    personas: int                            # personas que llegan a alguna salida
+    riesgo_promedio: float
+    riesgo_max: float
+    t50: int
+    t90: int
+    t100: int
+    t_p: int
+    por_salida: tuple[int, ...]
+    pico: int
+    curva: tuple[tuple[int, float], ...]
 
 
 # --- Cromosoma: decodificación y reparación ---------------------------------
@@ -182,96 +226,173 @@ def reparar(posiciones: list[Posicion], validas: tuple[Posicion, ...],
     return colocadas
 
 
-# --- Evaluación --------------------------------------------------------------
+# --- Medición y evaluación ---------------------------------------------------
 
-def _rutas(grid: tuple[tuple[int, ...], ...], ocupantes: tuple[Posicion, ...],
-           salidas: tuple[Posicion, ...]) -> tuple[list[int], list[int]]:
-    """Riesgo de cada ocupante con ruta y cuántos ocupantes atiende cada salida.
+def _tiempo_para(ordenadas: list[tuple[int, int, int, int]], personas: int, p: float) -> int:
+    """Primer segundo en que ya salió el p % de las personas que llegan a una salida.
 
-    Un solo UCS por ocupante: `metas` son todas las salidas y UCS devuelve la
-    de menor riesgo acumulado (la meta del último nodo de la ruta).
+    `ordenadas` son las llegadas (tiempo, salida, tamaño, riesgo) por tiempo creciente.
     """
-    riesgos: list[int] = []
-    conteo = {s: 0 for s in salidas}
-    for ocupante in ocupantes:
-        resultado = buscar_ucs(Escenario(grid, ocupante, salidas))
+    umbral = p * personas
+    acumuladas = 0
+    for tiempo, _, tamano, _ in ordenadas:
+        acumuladas += tamano
+        if acumuladas >= umbral - 1e-9:
+            return tiempo
+    return ordenadas[-1][0]
+
+
+def _pico_ventana(llegadas: list[tuple[int, int]], ventana: int) -> int:
+    """Máximo de personas que llegan a una salida dentro de una ventana de `ventana` s.
+
+    `llegadas` son (tiempo, tamaño). La ventana [t, t + ventana) arranca en cada llegada.
+    """
+    if not llegadas:
+        return 0
+    return max(sum(tam for t, tam in llegadas if inicio <= t < inicio + ventana)
+               for inicio, _ in llegadas)
+
+
+def _medir(problema: ProblemaAG, salidas: tuple[Posicion, ...]) -> _Medidas | None:
+    """Evalúa físicamente unas salidas. None si ningún grupo llega a una salida.
+
+    Un solo UCS por grupo: `metas` son todas las salidas y UCS devuelve la de menor
+    riesgo acumulado (la meta del último nodo de la ruta). El tiempo es el número
+    de pasos de esa ruta: cada casilla recorrida cuesta 1 segundo.
+    """
+    llegadas: list[tuple[int, int, int, int]] = []
+    indice = {s: i for i, s in enumerate(salidas)}
+    for grupo in problema.grupos:
+        resultado = buscar_ucs(Escenario(problema.grid, grupo.celda, salidas))
         if resultado.encontrada:
-            riesgos.append(resultado.costo)
-            conteo[resultado.ruta[-1]] += 1
-    return riesgos, [conteo[s] for s in salidas]
+            llegadas.append((resultado.pasos, indice[resultado.ruta[-1]],
+                             grupo.tamano, resultado.costo))
+    if not llegadas:
+        return None
+
+    ordenadas = sorted(llegadas)
+    personas = sum(tam for _, _, tam, _ in llegadas)
+    total = sum(g.tamano for g in problema.grupos)
+    por_salida = tuple(sum(tam for _, s, tam, _ in llegadas if s == i)
+                       for i in range(len(salidas)))
+    pico = max(_pico_ventana([(t, tam) for t, s, tam, _ in llegadas if s == i],
+                             problema.ventana) for i in range(len(salidas)))
+
+    curva: list[tuple[int, float]] = []
+    acumuladas = 0
+    for tiempo, _, tamano, _ in ordenadas:
+        acumuladas += tamano
+        if curva and curva[-1][0] == tiempo:
+            curva[-1] = (tiempo, acumuladas / total)
+        else:
+            curva.append((tiempo, acumuladas / total))
+
+    return _Medidas(
+        personas=personas,
+        riesgo_promedio=sum(tam * riesgo for _, _, tam, riesgo in llegadas) / personas,
+        riesgo_max=float(max(riesgo for _, _, _, riesgo in llegadas)),
+        t50=_tiempo_para(ordenadas, personas, 0.5),
+        t90=_tiempo_para(ordenadas, personas, 0.9),
+        t100=ordenadas[-1][0],
+        t_p=_tiempo_para(ordenadas, personas, problema.p_evac),
+        por_salida=por_salida,
+        pico=pico,
+        curva=tuple(curva),
+    )
 
 
 def evaluar(problema: ProblemaAG, salidas: tuple[Posicion, ...]) -> Configuracion:
     """Calcula O1..O4 y la aptitud de unas salidas ya válidas.
 
-    O1 = N_ruta / N
-    O2 = riesgo promedio / R_ref        O3 = riesgo máximo / R_ref
-    O4 = sigma(ocupantes por salida) / (N_ruta / k)
-    Sin ocupantes con ruta: O1 = 0, O2 = O3 = O4 = 0 y aptitud 0.
+    O1 = personas que salen / personas totales
+    O2 = riesgo promedio por persona / R_ref
+    O3 = T_p / T_ref        (T_p: segundos hasta que sale el p % de las personas)
+    O4 = personas en la peor ventana de una salida / personas que salen
+    Sin ningún grupo con ruta: O1 = 0, O2 = O3 = O4 = 0 y aptitud 0.
     """
     salidas = tuple(sorted(salidas))
-    riesgos, por_salida = _rutas(problema.grid, problema.ocupantes, salidas)
-    if not riesgos:
-        return Configuracion(salidas, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, tuple(por_salida))
-    n_ruta = len(riesgos)
-    promedio = sum(riesgos) / n_ruta
-    maximo = max(riesgos)
-    o1 = n_ruta / len(problema.ocupantes)
-    o2 = promedio / problema.r_ref
-    o3 = maximo / problema.r_ref
-    # Desviación poblacional: el máximo es sqrt(k-1) (todos en una sola salida).
-    o4 = statistics.pstdev(por_salida) / (n_ruta / problema.k)
+    medidas = _medir(problema, salidas)
+    if medidas is None:
+        return Configuracion(salidas, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                             (0,) * len(salidas), 0, 0, 0, 0)
+    total = sum(g.tamano for g in problema.grupos)
+    o1 = medidas.personas / total
+    o2 = medidas.riesgo_promedio / problema.r_ref
+    o3 = medidas.t_p / problema.t_ref
+    o4 = medidas.pico / medidas.personas
     aptitud = o1 * (1 / (1 + o2)) * (1 / (1 + o3)) * (1 / (1 + o4))
-    return Configuracion(salidas, o1, o2, o3, o4, aptitud, promedio, float(maximo),
-                         tuple(por_salida))
+    return Configuracion(salidas, o1, o2, o3, o4, aptitud, medidas.riesgo_promedio,
+                         medidas.riesgo_max, medidas.por_salida, medidas.t50, medidas.t90,
+                         medidas.t100, medidas.pico, medidas.curva)
 
 
-# --- Construcción del problema y R_ref ---------------------------------------
+# --- Construcción del problema y referencias ---------------------------------
 
-def crear_problema(escenario: Escenario, ocupantes, params: ParametrosAG) -> ProblemaAG:
-    """Valida los datos y calcula R_ref una sola vez para el escenario.
+def _como_grupo(dato) -> Grupo:
+    """Acepta Grupo, (fila, col) o (fila, col, tamaño)."""
+    if isinstance(dato, Grupo):
+        return dato
+    dato = tuple(dato)
+    if len(dato) == 2:
+        return Grupo((dato[0], dato[1]))
+    if len(dato) == 3:
+        return Grupo((dato[0], dato[1]), dato[2])
+    raise ValueError(f"Grupo inválido: {dato}")
+
+
+def crear_problema(escenario: Escenario, grupos, params: ParametrosAG) -> ProblemaAG:
+    """Valida los datos y calcula R_ref y T_ref una sola vez para el escenario.
 
     Del escenario solo se usa la cuadrícula; su inicio y sus metas se ignoran.
     """
-    ocupantes = tuple(tuple(o) for o in ocupantes)
-    if not ocupantes:
-        raise ValueError("Debe haber al menos un ocupante")
-    for ocupante in ocupantes:
-        if not escenario.dentro(ocupante):
-            raise ValueError(f"Ocupante fuera de la cuadrícula: {ocupante}")
+    grupos = tuple(_como_grupo(g) for g in grupos)
+    if not grupos:
+        raise ValueError("Debe haber al menos un grupo")
+    for grupo in grupos:
+        if not escenario.dentro(grupo.celda):
+            raise ValueError(f"Grupo fuera de la cuadrícula: {grupo.celda}")
     validas = tuple((f, c) for f in range(escenario.filas) for c in range(escenario.columnas)
                     if escenario.grid[f][c] == CELDA_LIBRE)
     if len(validas) < params.k:
         raise ValueError("No hay celdas libres suficientes para colocar las salidas")
 
-    base = ProblemaAG(escenario.grid, ocupantes, validas, frozenset(validas),
-                      params.k, params.d_min, 1.0)
-    return ProblemaAG(escenario.grid, ocupantes, validas, frozenset(validas),
-                      params.k, params.d_min, _calcular_r_ref(base))
+    base = ProblemaAG(escenario.grid, grupos, validas, frozenset(validas), params.k,
+                      params.d_min, params.p_evac, params.ventana, 1.0, 1.0)
+    r_ref, t_ref = _calcular_referencias(base)
+    return ProblemaAG(escenario.grid, grupos, validas, frozenset(validas), params.k,
+                      params.d_min, params.p_evac, params.ventana, r_ref, t_ref)
 
 
-def _calcular_r_ref(problema: ProblemaAG) -> float:
-    """Riesgo promedio con k salidas al azar: media de 30 configuraciones, semilla fija.
+def _calcular_referencias(problema: ProblemaAG) -> tuple[float, float]:
+    """R_ref y T_ref: promedio de 30 configuraciones al azar con semilla fija.
 
-    Solo cuentan ocupantes con ruta. Si no hay ninguna medición útil (o el riesgo
-    es 0) se usa 1.0 para evitar divisiones por cero.
+    R_ref es el riesgo promedio por persona y T_ref el tiempo T_p. Solo cuentan
+    grupos con ruta. Si no hay ninguna medición útil (o el valor es 0) se usa 1.0
+    para evitar divisiones por cero.
     """
-    rng = random.Random(SEMILLA_R_REF)
-    medias: list[float] = []
-    for _ in range(CONFIGS_R_REF):
+    rng = random.Random(SEMILLA_REF)
+    riesgos: list[float] = []
+    tiempos: list[float] = []
+    for _ in range(CONFIGS_REF):
         genes = [rng.random() for _ in range(2 * problema.k)]
         posiciones = reparar(decodificar(genes, problema.filas, problema.columnas),
                              problema.validas, problema.validas_set, problema.d_min)
         if posiciones is None:
             continue
-        riesgos, _ = _rutas(problema.grid, problema.ocupantes, tuple(sorted(posiciones)))
-        if riesgos:
-            medias.append(sum(riesgos) / len(riesgos))
-    r_ref = sum(medias) / len(medias) if medias else 1.0
-    return r_ref if r_ref > 0 else 1.0
+        medidas = _medir(problema, tuple(sorted(posiciones)))
+        if medidas is not None:
+            riesgos.append(medidas.riesgo_promedio)
+            tiempos.append(medidas.t_p)
+    r_ref = sum(riesgos) / len(riesgos) if riesgos else 1.0
+    t_ref = sum(tiempos) / len(tiempos) if tiempos else 1.0
+    return (r_ref if r_ref > 0 else 1.0), (t_ref if t_ref > 0 else 1.0)
 
 
 # --- Bucle del algoritmo genético --------------------------------------------
+
+# Configuración de un individuo que no se pudo reparar: aptitud 0.
+_INVALIDA = Configuracion((), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, (), 0, 0, 0, 0)
+
 
 class _Evaluador:
     """Evalúa individuos con caché por configuración de salidas (el orden no importa)."""
@@ -321,15 +442,16 @@ def _resumen(numero: int, poblacion: list[_Individuo]) -> Generacion:
                       sum(aptitudes) / len(aptitudes), min(aptitudes))
 
 
-def optimizar(escenario: Escenario, ocupantes, params: ParametrosAG = ParametrosAG()) -> ResultadoAG:
+def optimizar(escenario: Escenario, grupos, params: ParametrosAG = ParametrosAG()) -> ResultadoAG:
     """Busca las posiciones de k salidas con mayor aptitud.
 
+    `grupos` es una lista de Grupo, (fila, col) o (fila, col, tamaño).
     Con la misma semilla y los mismos datos el resultado es idéntico.
     El historial incluye la generación 0 (población inicial) y las `generaciones`
     siguientes. `top3` recoge las 3 mejores configuraciones distintas de toda la corrida.
     """
     rng = random.Random(params.semilla)
-    problema = crear_problema(escenario, ocupantes, params)
+    problema = crear_problema(escenario, grupos, params)
     evaluador = _Evaluador(problema)
 
     poblacion = [evaluador.individuo([rng.random() for _ in range(2 * params.k)])
