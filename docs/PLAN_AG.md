@@ -115,12 +115,12 @@ Cada quien trabaja en su rama (`edy-ag`, `heber-ag`) y toca solo sus archivos.
 | 4 | Aptitud producto y casos borde (sin ruta, sin grupos) | Edy | `evacuador/genetico.py` | Hecho |
 | 5 | Operadores y bucle generacional, `optimizar()` | Edy | `evacuador/genetico.py` | Hecho |
 | 6 | Top 3 distintas e historial por generación | Edy | `evacuador/genetico.py` | Hecho |
-| 7 | Formato y lectura de `grupos.csv` (fila, columna, tamaño) | Heber | `evacuador/io_grupos.py`, `data/grupos_*.csv`, `tests/test_io_grupos.py` | Pendiente |
-| 8 | Subcomando `optimizar` del CLI (opciones `--p-evac` y `--ventana`) | Heber | `evacuador/cli.py` | Pendiente |
-| 9 | Línea base: salidas al azar y búsqueda exhaustiva en mapas pequeños | Heber | `evacuador/experimentos_ag.py`, `tests/test_experimentos_ag.py` | Pendiente |
-| 10 | Gráfica de aptitud (mejor, promedio, peor) y tabla del mejor por generación | Heber | `evacuador/visualizacion_ag.py` | Pendiente |
-| 11 | Mapa con las tres mejores configuraciones, tabla comparativa y curva de evacuación | Heber | `evacuador/visualizacion_ag.py` | Pendiente |
-| 12 | Exportar resultados a CSV | Heber | `evacuador/io_grupos.py` o `experimentos_ag.py` | Pendiente |
+| 7 | Formato y lectura de `grupos.csv` (fila, columna, tamaño) | Heber | `evacuador/io_grupos.py`, `data/grupos_*.csv`, `tests/test_io_grupos.py` | Hecho |
+| 8 | Subcomando `optimizar` del CLI (opciones `--p-evac` y `--ventana`) | Heber | `evacuador/cli.py` | Hecho |
+| 9 | Línea base: salidas al azar y búsqueda exhaustiva en mapas pequeños | Heber | `evacuador/experimentos_ag.py`, `tests/test_experimentos_ag.py` | Hecho |
+| 10 | Gráfica de aptitud (mejor, promedio, peor) y tabla del mejor por generación | Heber | `evacuador/visualizacion_ag.py`, `evacuador/experimentos_ag.py` (tabla) | Hecho |
+| 11 | Mapa con las tres mejores configuraciones, tabla comparativa y curva de evacuación | Heber | `evacuador/visualizacion_ag.py` | Hecho |
+| 12 | Exportar resultados a CSV | Heber | `evacuador/experimentos_ag.py` | Hecho |
 | 13 | Experimentos y ajuste de parámetros en mapas A–E | Ambos | `evacuador/experimentos_ag.py` | Pendiente |
 | 14 | Informe final | Ambos | `docs/` | Pendiente |
 
@@ -167,3 +167,6 @@ Anotar aquí cualquier cambio respecto a la propuesta (fecha, qué y por qué).
 - 2026-11-25: T_p se calcula sobre las personas que sí llegan a una salida, para que siempre esté definido; las que no tienen ruta ya las castiga O1.
 - 2026-11-25: pendiente en los experimentos (tarea 13): top 3 con separación mínima entre configuraciones y ajuste de sigma y élites por convergencia temprana.
 - 2026-11-25: el desbalance entre salidas y el riesgo del peor grupo dejaron de ser objetivos; siguen como datos informativos (`personas_por_salida`, `riesgo_max`).
+- 2026-11-25: formato de grupos `data/grupos_*.csv`: encabezado `fila,columna,tamano` y una fila por grupo. Los de A–D tienen 12 grupos de 1 a 8 personas generados con `generar_grupos(..., semilla=1)`.
+- 2026-11-25: las tablas (mejor por generación y comparativa del top 3) y su exportación a CSV viven en `experimentos_ag.py`, sin matplotlib; `visualizacion_ag.py` solo dibuja. El CLI imprime y, con `--salida`, escribe `historial.csv`, `top3.csv` y (con `--grafico`) tres PNG.
+- 2026-11-25: comparación AG vs azar vs exhaustivo (`python3 -m evacuador experimentos-ag`): 10 semillas, el azar recibe el mismo número de configuraciones distintas que evaluó el AG, y la exhaustiva se rechaza con más de 50 000 combinaciones (por eso usa k = 2 por defecto y en D queda "-"). El escenario E se omite: es 4x4 y casi no tiene celdas para colocar k salidas con d_min = 3.
