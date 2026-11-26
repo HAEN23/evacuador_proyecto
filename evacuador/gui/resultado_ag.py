@@ -250,9 +250,19 @@ class VistaResultadoAG(ttk.Frame):
             lateral.pack(side="left", fill="y", padx=(16, 0), pady=16)
             lateral.pack_propagate(False)
             ttk.Label(lateral, text="¿Qué estoy viendo?", style="Subsection.TLabel"
-                      ).pack(anchor="w", pady=(40, 8))
-            ttk.Label(lateral, text=explicacion, style="Body.TLabel", wraplength=255,
-                      justify="left").pack(anchor="w")
+                      ).pack(anchor="w", pady=(16, 8))
+            # Text con barra: si la explicación no cabe en la altura, se desplaza.
+            desliz = ttk.Scrollbar(lateral, orient="vertical",
+                                   style="Panel.Vertical.TScrollbar")
+            texto = tk.Text(lateral, wrap="word", relief="flat", bd=0, highlightthickness=0,
+                            bg=COLORES["superficie"], fg=COLORES["texto_secundario"],
+                            font=ttk.Style().lookup("Body.TLabel", "font"), cursor="arrow",
+                            spacing2=2, yscrollcommand=desliz.set)
+            desliz.configure(command=texto.yview)
+            texto.insert("1.0", explicacion)
+            texto.configure(state="disabled")
+            desliz.pack(side="right", fill="y")
+            texto.pack(side="left", fill="both", expand=True)
         lienzo = FigureCanvasTkAgg(figura, master=marco)
         barra = NavigationToolbar2Tk(lienzo, marco, pack_toolbar=False)
         barra.configure(background=COLORES["superficie"])
@@ -356,12 +366,16 @@ def texto_mapa(conf: Configuracion, puesto: int, mejor: Configuracion, personas:
     if conf.o1 < 1:
         partes.append("Las X rojas son grupos que no pueden llegar a ninguna salida.")
     if puesto > 1:
-        partes.append(f"Su aptitud es {mejor.aptitud - conf.aptitud:.4f} menor que la "
-                      f"del mapa #1.")
-    partes.append("Cómo leer el mapa: amarillo es aire limpio y rojo es mucho humo; "
-                  "negro es muro; los círculos verdes son grupos (más grandes, más "
-                  "personas); las estrellas son las salidas y las líneas, el camino "
-                  "de cada grupo.")
+        diferencia = mejor.aptitud - conf.aptitud
+        partes.append(f"Su aptitud es {diferencia:.4f} menor que la del mapa #1."
+                      if diferencia >= 0.00005 else
+                      "Su aptitud es prácticamente igual a la del mapa #1.")
+    partes.append("Cómo leer el mapa:\n"
+                  "  • Amarillo: aire limpio. Rojo: mucho humo.\n"
+                  "  • Negro: muro.\n"
+                  "  • Círculo verde: grupo (más grande, más personas).\n"
+                  "  • Estrella azul: salida.\n"
+                  "  • Línea: camino de cada grupo.")
     return "\n\n".join(partes)
 
 

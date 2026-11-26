@@ -21,13 +21,15 @@ class TestTextos(unittest.TestCase):
     def test_mapa_usa_los_datos_de_cada_configuracion(self):
         from evacuador.gui.resultado_ag import texto_mapa
 
-        mejor, segunda = self.res.top3[0], self.res.top3[1]
+        mejor = self.res.top3[0]
+        segunda = replace(self.res.top3[1], aptitud=mejor.aptitud - 0.01)
         texto = texto_mapa(segunda, 2, mejor, 5, 5)
         self.assertIn("segunda mejor", texto)
         self.assertIn("de las 5 personas", texto)
         for (f, c), n in zip(segunda.salidas, segunda.personas_por_salida):
             self.assertIn(f"({f}, {c}): llegan {n} personas", texto)
-        self.assertIn("menor que la del mapa #1", texto)
+        self.assertIn("0.0100 menor que la del mapa #1", texto)
+        self.assertIn("prácticamente igual", texto_mapa(mejor, 2, mejor, 5, 5))
         self.assertNotIn("mapa #1.", texto_mapa(mejor, 1, mejor, 5, 5))
 
     def test_comparacion_dice_quien_gana(self):
