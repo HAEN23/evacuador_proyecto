@@ -185,9 +185,9 @@ class EditorAG(EditorEscenarios):
         # Salidas
         poner(ttk.Label(panel, text="Salidas de emergencia", style="Subsection.TLabel"),
               sticky="w", pady=(0, 2))
-        poner(ttk.Label(panel, text="Herramienta «Salida de emergencia» o al azar con k y "
-                                    "la distancia mínima de los parámetros. Solo en "
-                                    "celdas libres.",
+        poner(ttk.Label(panel, text="Herramienta «Salida de emergencia», o al azar: el "
+                                    "botón también sortea k y la distancia mínima y los "
+                                    "pone en los parámetros. Solo en celdas libres.",
                         style="Hint.TLabel", wraplength=300, justify="left"),
               sticky="w", pady=(0, 8))
         boton("Generar salidas al azar", self.generar_salidas_azar)
@@ -305,17 +305,21 @@ class EditorAG(EditorEscenarios):
         self._estado.set("Cuadrícula restaurada: sin paredes, humo ni grupos.")
 
     def generar_salidas_azar(self) -> None:
-        """Coloca k salidas al azar usando k, la distancia mínima y la semilla del panel."""
+        """Sortea k y la distancia mínima, los pone en el panel y coloca las salidas.
+
+        Cada clic da un resultado distinto (no usa la semilla del panel, que es la
+        del AG).
+        """
         try:
-            params = self._leer_parametros()
-            semilla = params.semilla if params.semilla is not None else random.randrange(10**6)
-            self._diseno.generar_salidas(params.k, params.d_min, semilla)
+            k, d_min = self._diseno.generar_salidas_aleatorias(random.randrange(10**9))
         except ValueError as exc:
             messagebox.showerror("No se pudieron generar las salidas", str(exc),
                                  parent=self.winfo_toplevel())
             return
+        self._k.set(str(k))
+        self._d_min.set(str(d_min))
         self._dibujar()
-        self._estado.set(f"{params.k} salidas generadas al azar: "
+        self._estado.set(f"Al azar: k = {k}, distancia mínima = {d_min}. Salidas: "
                          + " ".join(f"({f}, {c})" for f, c in self._diseno.salidas))
 
     def quitar_salidas(self) -> None:

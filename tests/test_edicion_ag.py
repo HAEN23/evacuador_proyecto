@@ -74,6 +74,19 @@ class TestDisenoAG(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "No caben"):
             self.d.generar_salidas(4, 20)
 
+    def test_generar_salidas_aleatorias_sortea_k_y_d_min(self):
+        d = DisenoAG(12, 20)
+        vistos = set()
+        for semilla in range(20):
+            k, d_min = d.generar_salidas_aleatorias(semilla)
+            vistos.add(k)
+            self.assertEqual(len(d.salidas), k)
+            self.assertTrue(2 <= d_min <= 8)
+            self.assertTrue(all(abs(p[0] - q[0]) + abs(p[1] - q[1]) >= d_min
+                                for i, p in enumerate(d.salidas) for q in d.salidas[i + 1:]))
+        self.assertEqual(vistos, {2, 3, 4})
+        self.assertEqual(d.generar_salidas_aleatorias(5), d.generar_salidas_aleatorias(5))
+
     def test_poner_grupos_valida(self):
         self.d.aplicar(Herramienta.BLOQUEADA, (1, 1))
         with self.assertRaisesRegex(ValueError, "fuera"):

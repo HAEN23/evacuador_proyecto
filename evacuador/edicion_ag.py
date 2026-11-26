@@ -18,7 +18,7 @@ import random
 
 from .config import BLOQUEADA, COSTO_MIN, NIVEL_HUMO_DEFECTO
 from .edicion import DisenoEscenario, DisenoInvalido, Herramienta
-from .genetico import Grupo, decodificar, reparar
+from .genetico import K_PERMITIDOS, Grupo, decodificar, reparar
 from .modelos import Escenario, Posicion
 
 TAMANO_GRUPO_DEFECTO = 4
@@ -104,6 +104,23 @@ class DisenoAG(DisenoEscenario):
             raise ValueError(f"No caben {k} salidas en celdas libres a una distancia "
                              f"mínima de {d_min}")
         self.salidas = sorted(posiciones)
+
+    def generar_salidas_aleatorias(self, semilla: int | None = None) -> tuple[int, int]:
+        """Sortea k (2, 3 o 4) y la distancia mínima, y coloca las salidas al azar.
+
+        La distancia mínima va de 2 a un cuarto de (filas + columnas); si con ella
+        no caben las k salidas, se baja hasta que quepan. Devuelve (k, d_min).
+        """
+        rng = random.Random(semilla)
+        k = rng.choice(K_PERMITIDOS)
+        d_min = rng.randint(2, max(2, (self.filas + self.columnas) // 4))
+        for d in range(d_min, 0, -1):
+            try:
+                self.generar_salidas(k, d, rng.randrange(10**9))
+                return k, d
+            except ValueError:
+                continue
+        raise ValueError(f"No caben {k} salidas en las celdas libres del escenario")
 
     def poner_grupos(self, grupos: list[Grupo]) -> None:
         """Reemplaza los grupos. Lanza ValueError si alguno cae fuera del mapa o en un muro."""
