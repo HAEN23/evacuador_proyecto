@@ -6,8 +6,11 @@ import sys
 from pathlib import Path
 
 from . import experimentos as exp
+from . import experimentos_ag as exp_ag
 from . import visualizacion as vis
 from .generador import ConfigGenerador, generar_escenario
+from .genetico import ParametrosAG, optimizar
+from .io_grupos import cargar_grupos
 from .io_csv import cargar_csv, guardar_csv
 from .ucs import buscar_ucs
 
@@ -38,8 +41,81 @@ def _parser() -> argparse.ArgumentParser:
     e.add_argument("--guardar-escenarios", metavar="CARPETA",
                    help="guarda cada escenario generado como CSV en esa carpeta")
 
+    o = sub.add_parser("optimizar", help="ubica k salidas con el algoritmo genético (EvacuAG)")
+    o.add_argument("escenario", help="CSV del escenario")
+    o.add_argument("--grupos", required=True, help="CSV de grupos (fila,columna,tamano)")
+    _opciones_ag(o, k=3)
+    o.add_argument("--salida", metavar="CARPETA",
+                   help="guarda historial.csv y top3.csv (y las figuras con --grafico)")
+    o.add_argument("--grafico", action="store_true",
+                   help="genera las figuras (requiere matplotlib y --salida)")
+
+    x = sub.add_parser("experimentos-ag",
+                       help="compara el AG contra salidas al azar y búsqueda exhaustiva (A-D)")
+    _opciones_ag(x, k=2, semilla=False)
+    x.add_argument("--semillas", type=int, default=10, help="número de semillas (0..N-1)")
+    x.add_argument("--sin-exhaustivo", action="store_true",
+                   help="omite la búsqueda exhaustiva (es la parte más lenta)")
+    x.add_argument("--csv", metavar="ARCHIVO", help="guarda también la tabla en CSV")
+
     sub.add_parser("gui", help="abre la interfaz gráfica (requiere tkinter)")
     return p
+
+
+def _opciones_ag(p: argparse.ArgumentParser, k: int, semilla: bool = True) -> None:
+    """Opciones del AG compartidas por `optimizar` y `experimentos-ag`."""
+    p.add_argument("--k", type=int, default=k, help="número de salidas (2, 3 o 4)")
+    p.add_argument("--d-min", type=int, default=3, help="distancia Manhattan mínima entre salidas")
+    p.add_argument("--poblacion", type=int, default=20)
+    p.add_argument("--generaciones", type=int, default=100)
+    p.add_argument("--p-evac", type=float, default=0.9,
+                   help="fracción de personas para el tiempo T_p, en (0, 1]")
+    p.add_argument("--ventana", type=int, default=5, help="segundos de la ventana de aglomeración")
+    if semilla:
+        p.add_argument("--semilla", type=int, default=None)
+
+
+def _parametros(args: argparse.Namespace, semilla: int | None = None) -> ParametrosAG:
+    return ParametrosAG(tam_poblacion=args.poblacion, generaciones=args.generaciones, k=args.k,
+                        d_min=args.d_min, p_evac=args.p_evac, ventana=args.ventana,
+                        semilla=semilla)
+
+
+def _optimizar(args: argparse.Namespace) -> None:
+    if args.grafico and not args.salida:
+        raise ValueError("--grafico necesita --salida para guardar las figuras")
+    esc = cargar_csv(args.escenario)
+    grupos = cargar_grupos(args.grupos)
+    resultado = optimizar(esc, grupos, _parametros(args, args.semilla))
+    # Se muestran unas 10 filas del historial; el CSV lo guarda completo.
+    cada = max(1, args.generaciones // 10)
+    print(f"Mejor individuo por generación (cada {cada}):\n")
+    print(exp_ag.historial_markdown(resultado, cada))
+    print("\nTres mejores configuraciones:\n")
+    print(exp_ag.top3_markdown(resultado))
+    if args.salida:
+        carpeta = Path(args.salida)
+        carpeta.mkdir(parents=True, exist_ok=True)
+        (carpeta / "historial.csv").write_text(exp_ag.historial_csv(resultado) + "\n",
+                                               encoding="utf-8")
+        (carpeta / "top3.csv").write_text(exp_ag.top3_csv(resultado) + "\n", encoding="utf-8")
+        print(f"\nCSV guardados en {carpeta}/ (historial.csv, top3.csv)")
+        if args.grafico:
+            from . import visualizacion_ag  # perezoso: solo aquí se necesita matplotlib
+            for ruta in visualizacion_ag.guardar_figuras(carpeta, esc, grupos, resultado):
+                print(f"Figura guardada en {ruta}")
+
+
+def _experimentos_ag(args: argparse.Namespace) -> None:
+    if args.semillas < 1:
+        raise ValueError("--semillas debe ser al menos 1")
+    filas = exp_ag.comparar_todos(_parametros(args), range(args.semillas),
+                                  exhaustivo=not args.sin_exhaustivo)
+    print(exp_ag.tabla_markdown(filas))
+    if args.csv:
+        with open(args.csv, "w", encoding="utf-8") as f:
+            f.write(exp_ag.tabla_csv(filas) + "\n")
+        print(f"\nTabla guardada en {args.csv}")
 
 
 def _gui() -> None:
@@ -80,6 +156,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Escenario guardado en {args.salida}")
         elif args.cmd == "experimentos":
             _experimentos(args)
+        elif args.cmd == "optimizar":
+            _optimizar(args)
+        elif args.cmd == "experimentos-ag":
+            _experimentos_ag(args)
         elif args.cmd == "gui":
             _gui()
         else:
