@@ -5,7 +5,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent / "evacuador"
 NUCLEO = {"config", "modelos", "ucs", "generador", "io_csv", "experimentos",
-          "visualizacion", "edicion", "cli"}
+          "visualizacion", "edicion", "cli", "genetico"}
 CAPAS_NUCLEO = {"config", "modelos", "ucs", "generador", "io_csv", "edicion"}
 
 
