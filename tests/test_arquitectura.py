@@ -5,7 +5,8 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent / "evacuador"
 NUCLEO = {"config", "modelos", "ucs", "generador", "io_csv", "experimentos",
-          "visualizacion", "edicion", "cli"}
+          "visualizacion", "edicion", "cli", "genetico", "io_grupos",
+          "experimentos_ag", "visualizacion_ag"}
 CAPAS_NUCLEO = {"config", "modelos", "ucs", "generador", "io_csv", "edicion"}
 
 
@@ -44,11 +45,14 @@ class TestArquitectura(unittest.TestCase):
             self.assertLessEqual(propios - {""}, permitidos, modulo)
 
     def test_matplotlib_solo_se_importa_dentro_de_funciones(self):
-        arbol = ast.parse((RAIZ / "visualizacion.py").read_text(encoding="utf-8"))
-        for nodo in arbol.body:
-            if isinstance(nodo, (ast.Import, ast.ImportFrom)):
-                nombre = getattr(nodo, "module", None) or nodo.names[0].name
-                self.assertFalse(nombre.startswith(("matplotlib", "numpy")), nombre)
+        for modulo in ("visualizacion", "visualizacion_ag", "cli"):
+            arbol = ast.parse((RAIZ / f"{modulo}.py").read_text(encoding="utf-8"))
+            for nodo in arbol.body:
+                if isinstance(nodo, (ast.Import, ast.ImportFrom)):
+                    nombre = getattr(nodo, "module", None) or nodo.names[0].name
+                    self.assertFalse(nombre.startswith(("matplotlib", "numpy")), modulo)
+                    # El CLI tampoco carga visualizacion_ag al inicio (importa matplotlib al dibujar).
+                    self.assertNotIn("visualizacion_ag", {a.name for a in nodo.names}, modulo)
 
     def test_vistas_de_la_gui_no_se_importan_entre_si(self):
         # Solo app.py conoce a editor y resultado; estas dependen de tema, no de app.
