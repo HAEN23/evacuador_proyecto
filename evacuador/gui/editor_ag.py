@@ -4,9 +4,9 @@ Reutiliza la cuadrícula, el zoom y la pintura del editor de escenarios y añade
 
 * la herramienta «Grupo de personas» (cada grupo tiene un tamaño);
 * abrir, guardar y generar al azar el catálogo de grupos (CSV ``fila,columna,tamano``);
+* salidas de emergencia colocadas a mano o generadas al azar (k y distancia
+  mínima de los parámetros); al ejecutar se comparan con las que elige el AG;
 * los parámetros del AG y el botón que lo ejecuta.
-
-Las salidas no se dibujan: las decide el algoritmo genético.
 """
 
 from __future__ import annotations
@@ -18,10 +18,11 @@ from tkinter import filedialog, messagebox
 from tkinter import ttk
 from typing import Callable, Final, Optional
 
-from ..config import (COLOR_INICIO, COSTO_MAX, DIMENSION_MAX, DIMENSION_MIN, UMBRAL_HUMO)
+from ..config import (COLOR_INICIO, COLOR_SALIDA, COSTO_MAX, DIMENSION_MAX, DIMENSION_MIN, UMBRAL_HUMO)
 from ..edicion import Herramienta
 from ..edicion_ag import TAMANO_GRUPO_DEFECTO, TAMANO_GRUPO_MAX, DisenoAG
-from ..genetico import K_PERMITIDOS, Grupo, ParametrosAG, ResultadoAG, optimizar
+from ..genetico import (K_PERMITIDOS, Configuracion, Grupo, ParametrosAG, ResultadoAG,
+                        crear_problema, evaluar, optimizar)
 from ..io_grupos import cargar_grupos, generar_grupos, guardar_grupos
 from ..modelos import Escenario, Posicion
 from .dialogos import TIPOS_CSV
@@ -32,11 +33,14 @@ HERRAMIENTAS_AG: Final[tuple[tuple[Herramienta, str], ...]] = (
     (Herramienta.LIBRE, "Celda libre (1)"),
     (Herramienta.HUMO, "Humo / tóxico (2 – 99)"),
     (Herramienta.GRUPO, "Grupo de personas"),
+    (Herramienta.SALIDA, "Salida de emergencia"),
     (Herramienta.BORRAR, "Borrar (restaurar celda)"),
 )
 
-# Firma del aviso que recibe la ventana principal cuando termina el AG.
-AlOptimizar = Callable[[Escenario, list[Grupo], ParametrosAG, ResultadoAG], None]
+# Firma del aviso que recibe la ventana principal cuando termina el AG. El último
+# argumento es la evaluación de las salidas del editor (None si no se colocaron).
+AlOptimizar = Callable[[Escenario, list[Grupo], ParametrosAG, ResultadoAG,
+                        Optional[Configuracion]], None]
 
 
 class EditorAG(EditorEscenarios):
@@ -73,8 +77,10 @@ class EditorAG(EditorEscenarios):
         return DisenoAG()
 
     def _marca(self, pos: Posicion) -> Optional[tuple[str, str]]:
-        """Cada grupo se dibuja como un círculo verde con su número de personas."""
+        """Grupo: círculo verde con sus personas. Salida: círculo azul con «S»."""
         tamano = self._diseno.grupos.get(pos)
+        if pos in self._diseno.salidas:
+            return (str(tamano) if tamano else "S", COLOR_SALIDA)
         return (str(tamano), COLOR_INICIO) if tamano else None
 
     def _aplicar(self, pos: Posicion) -> None:
@@ -87,8 +93,10 @@ class EditorAG(EditorEscenarios):
     def _dibujar(self) -> None:
         super()._dibujar()
         n, personas = len(self._diseno.grupos), self._diseno.personas
+        salidas = len(self._diseno.salidas)
         self._conteo.set(f"{n} grupo{'s' if n != 1 else ''} · {personas} persona"
-                         f"{'s' if personas != 1 else ''}")
+                         f"{'s' if personas != 1 else ''} · {salidas} salida"
+                         f"{'s' if salidas != 1 else ''}")
 
     def cargar_escenario(self, esc: Escenario) -> None:
         super().cargar_escenario(esc)
@@ -113,8 +121,8 @@ class EditorAG(EditorEscenarios):
               sticky="w")
         poner(ttk.Label(panel, text="Escenario y grupos", style="SectionTitle.TLabel"),
               sticky="w", pady=(4, 4))
-        poner(ttk.Label(panel, text="Las salidas no se colocan a mano: el algoritmo "
-                                    "genético decide dónde ponerlas al ejecutarlo (F5).",
+        poner(ttk.Label(panel, text="Las salidas que coloque aquí se comparan con las que "
+                                    "elige el algoritmo genético al ejecutarlo (F5).",
                         style="Hint.TLabel", wraplength=300, justify="left"),
               sticky="w", pady=(0, 14))
 
@@ -172,6 +180,18 @@ class EditorAG(EditorEscenarios):
         boton("Abrir grupos CSV…", self.abrir_grupos, pady=(8, 0))
         boton("Guardar grupos como CSV…", self.guardar_grupos, pady=(8, 0))
         boton("Quitar todos los grupos", self.quitar_grupos, pady=(8, 0))
+        poner(ttk.Separator(panel), pady=16)
+
+        # Salidas
+        poner(ttk.Label(panel, text="Salidas de emergencia", style="Subsection.TLabel"),
+              sticky="w", pady=(0, 2))
+        poner(ttk.Label(panel, text="Herramienta «Salida de emergencia» o al azar con k y "
+                                    "la distancia mínima de los parámetros. Solo en "
+                                    "celdas libres.",
+                        style="Hint.TLabel", wraplength=300, justify="left"),
+              sticky="w", pady=(0, 8))
+        boton("Generar salidas al azar", self.generar_salidas_azar)
+        boton("Quitar todas las salidas", self.quitar_salidas, pady=(8, 0))
         poner(ttk.Separator(panel), pady=16)
 
         # Parámetros del AG
@@ -284,6 +304,25 @@ class EditorAG(EditorEscenarios):
         self._dibujar()
         self._estado.set("Cuadrícula restaurada: sin paredes, humo ni grupos.")
 
+    def generar_salidas_azar(self) -> None:
+        """Coloca k salidas al azar usando k, la distancia mínima y la semilla del panel."""
+        try:
+            params = self._leer_parametros()
+            semilla = params.semilla if params.semilla is not None else random.randrange(10**6)
+            self._diseno.generar_salidas(params.k, params.d_min, semilla)
+        except ValueError as exc:
+            messagebox.showerror("No se pudieron generar las salidas", str(exc),
+                                 parent=self.winfo_toplevel())
+            return
+        self._dibujar()
+        self._estado.set(f"{params.k} salidas generadas al azar: "
+                         + " ".join(f"({f}, {c})" for f, c in self._diseno.salidas))
+
+    def quitar_salidas(self) -> None:
+        self._diseno.salidas = []
+        self._dibujar()
+        self._estado.set("Se quitaron todas las salidas.")
+
     def quitar_grupos(self) -> None:
         self._diseno.grupos = {}
         self._dibujar()
@@ -336,4 +375,12 @@ class EditorAG(EditorEscenarios):
             ventana.config(cursor="")
         self._estado.set(f"AG terminado: aptitud {resultado.mejor.aptitud:.4f} con "
                          f"{resultado.evaluaciones} evaluaciones.")
-        self._al_calcular(esc, grupos, params, resultado)
+        self._al_calcular(esc, grupos, params, resultado, self._evaluar_salidas(esc, grupos,
+                                                                              params))
+
+    def _evaluar_salidas(self, esc: Escenario, grupos: list[Grupo],
+                         params: ParametrosAG) -> Optional[Configuracion]:
+        """Evalúa las salidas del editor con la misma aptitud que usa el AG."""
+        if not self._diseno.salidas:
+            return None
+        return evaluar(crear_problema(esc, grupos, params), tuple(self._diseno.salidas))

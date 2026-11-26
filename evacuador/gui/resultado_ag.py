@@ -20,10 +20,10 @@ import os
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Callable
+from typing import Callable, Optional
 
 from .. import experimentos_ag as exp_ag
-from ..genetico import Grupo, ParametrosAG, ResultadoAG
+from ..genetico import Configuracion, Grupo, ParametrosAG, ResultadoAG
 from ..modelos import Escenario
 from .tema import COLORES
 
@@ -41,17 +41,21 @@ class VistaResultadoAG(ttk.Frame):
         al_editar: Acción del botón "Volver al editor".
         al_guardar: Acción del botón «Guardar escenario como CSV…».
         al_guardar_grupos: Acción del botón «Guardar grupos como CSV…».
+        manual: Evaluación de las salidas colocadas en el editor, para compararlas
+            con las del AG. None si no se colocaron.
     """
 
     def __init__(self, padre: tk.Misc, escenario: Escenario, grupos: list[Grupo],
                  params: ParametrosAG, resultado: ResultadoAG, al_volver: Callable[[], None],
                  al_editar: Callable[[], None], al_guardar: Callable[[], None],
-                 al_guardar_grupos: Callable[[], None]) -> None:
+                 al_guardar_grupos: Callable[[], None],
+                 manual: Optional[Configuracion] = None) -> None:
         super().__init__(padre, style="App.TFrame")
         self._escenario = escenario
         self._grupos = grupos
         self._params = params
         self._resultado = resultado
+        self._manual = manual
         self._al_guardar = al_guardar
         self._lienzos: list[object] = []   # referencias a los lienzos de matplotlib
 
@@ -78,10 +82,7 @@ class VistaResultadoAG(ttk.Frame):
 
     def _crear_panel(self, al_volver, al_editar, al_guardar, al_guardar_grupos) -> None:
         """Panel lateral con la mejor configuración y las acciones."""
-        marco = tk.Frame(self, bg=COLORES["borde"])
-        marco.grid(row=1, column=0, sticky="ns", padx=(0, 12))
-        panel = ttk.Frame(marco, style="Card.TFrame", padding=(24, 20))
-        panel.pack(fill="both", expand=True, padx=1, pady=1)
+        panel = self._panel_desplazable()
         panel.columnconfigure(1, weight=1)
 
         r, m, p = self._resultado, self._resultado.mejor, self._params
@@ -115,6 +116,29 @@ class VistaResultadoAG(ttk.Frame):
             ttk.Label(panel, text=valor, style="Body.TLabel").grid(
                 row=i, column=1, sticky="e", padx=(16, 0), pady=3)
 
+        if self._manual is not None:
+            c = self._manual
+            ttk.Separator(panel).grid(row=20, column=0, columnspan=2, sticky="ew", pady=12)
+            ttk.Label(panel, text="Sus salidas (editor)", style="Subsection.TLabel").grid(
+                row=21, column=0, columnspan=2, sticky="w")
+            ttk.Label(panel, text=" ".join(f"({f}, {col})" for f, col in c.salidas),
+                      style="Body.TLabel", wraplength=280).grid(
+                row=22, column=0, columnspan=2, sticky="w", pady=(2, 4))
+            if m.aptitud > c.aptitud:
+                veredicto = f"El AG es {100 * (m.aptitud / c.aptitud - 1):.0f} % mejor" \
+                    if c.aptitud > 0 else "El AG es mejor"
+            elif m.aptitud < c.aptitud:
+                veredicto = "Sus salidas son mejores que las del AG"
+            else:
+                veredicto = "Empate con el AG"
+            # El detalle de estas salidas está en la pestaña «Sus salidas vs. AG».
+            for i, (termino, valor) in enumerate((
+                    ("Aptitud", f"{c.aptitud:.4f}  ({veredicto})"),), start=23):
+                ttk.Label(panel, text=termino, style="Term.TLabel").grid(
+                    row=i, column=0, sticky="w", pady=2)
+                ttk.Label(panel, text=valor, style="Body.TLabel", wraplength=230).grid(
+                    row=i, column=1, sticky="e", padx=(16, 0), pady=2)
+
         ttk.Separator(panel).grid(row=30, column=0, columnspan=2, sticky="ew", pady=16)
         botones = (
             ("Exportar resultados (CSV y figuras)…", self.exportar, "Primary.TButton"),
@@ -126,6 +150,32 @@ class VistaResultadoAG(ttk.Frame):
         for i, (texto, accion, estilo) in enumerate(botones, start=31):
             ttk.Button(panel, text=texto, style=estilo, cursor="hand2", command=accion).grid(
                 row=i, column=0, columnspan=2, sticky="ew", pady=(0 if i == 31 else 8, 0))
+
+    def _panel_desplazable(self) -> ttk.Frame:
+        """Panel lateral con barra vertical, para que no se corte en pantallas bajas."""
+        marco = tk.Frame(self, bg=COLORES["borde"])
+        marco.grid(row=1, column=0, sticky="ns", padx=(0, 12))
+        marco.rowconfigure(0, weight=1)
+        lienzo = tk.Canvas(marco, bg=COLORES["superficie"], highlightthickness=0, bd=0)
+        barra = ttk.Scrollbar(marco, orient="vertical", command=lienzo.yview,
+                              style="Panel.Vertical.TScrollbar")
+        lienzo.configure(yscrollcommand=barra.set)
+        lienzo.grid(row=0, column=0, sticky="ns", padx=(1, 0), pady=1)
+        barra.grid(row=0, column=1, sticky="ns", padx=(0, 1), pady=1)
+        panel = ttk.Frame(lienzo, style="Card.TFrame", padding=(24, 20))
+        lienzo.create_window(0, 0, window=panel, anchor="nw")
+        panel.bind("<Configure>", lambda _e: lienzo.configure(
+            scrollregion=lienzo.bbox("all"), width=panel.winfo_reqwidth()))
+
+        def desplazar(evento: tk.Event) -> None:
+            arriba = evento.num == 4 or getattr(evento, "delta", 0) > 0
+            lienzo.yview_scroll(-1 if arriba else 1, "units")
+
+        # La rueda solo mueve el panel mientras el puntero está encima.
+        secuencias = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+        marco.bind("<Enter>", lambda _e: [self.bind_all(q, desplazar) for q in secuencias])
+        marco.bind("<Leave>", lambda _e: [self.unbind_all(q) for q in secuencias])
+        return panel
 
     def _crear_pestanas(self) -> None:
         """Pestañas con las gráficas y las tablas."""
@@ -143,13 +193,15 @@ class VistaResultadoAG(ttk.Frame):
         else:
             r = self._resultado
             graficas = (
-                ("Tres mejores configuraciones",
+                ("Top 3 en el mapa",
                  lambda f: vis.dibujar_top3(f, self._escenario, self._grupos, r)),
-                ("Evolución de la aptitud",
+                ("Evolución",
                  lambda f: vis.dibujar_evolucion(f, f.add_subplot(111), r)),
                 ("Curva de evacuación",
                  lambda f: vis.dibujar_curvas(f, f.add_subplot(111), r)),
             )
+            if self._manual is not None:
+                graficas += (("Sus salidas vs. AG", self._dibujar_comparacion),)
             for titulo, dibujar in graficas:
                 figura = Figure(figsize=(9, 6), dpi=100, facecolor=COLORES["superficie"],
                                 layout="constrained")
@@ -157,9 +209,20 @@ class VistaResultadoAG(ttk.Frame):
                 cuaderno.add(self._incrustar(cuaderno, figura), text=titulo)
 
         cuaderno.add(self._tabla(cuaderno, exp_ag.top3_csv(self._resultado)),
-                     text="Tabla comparativa")
+                     text="Tabla top 3")
         cuaderno.add(self._tabla(cuaderno, exp_ag.historial_csv(self._resultado)),
-                     text="Mejor por generación")
+                     text="Por generación")
+
+    def _dibujar_comparacion(self, figura) -> None:
+        """La mejor configuración del AG junto a las salidas colocadas en el editor."""
+        from .. import visualizacion_ag as vis
+
+        ag, manual = self._resultado.mejor, self._manual
+        izquierda, derecha = figura.subplots(1, 2)
+        vis.dibujar_configuracion(figura, izquierda, self._escenario, self._grupos, ag,
+                                  titulo=f"AG  ·  aptitud {ag.aptitud:.4f}", barra=False)
+        vis.dibujar_configuracion(figura, derecha, self._escenario, self._grupos, manual,
+                                  titulo=f"Sus salidas  ·  aptitud {manual.aptitud:.4f}")
 
     def _incrustar(self, padre: tk.Misc, figura) -> tk.Frame:
         """Integra una figura de matplotlib con su barra de navegación."""

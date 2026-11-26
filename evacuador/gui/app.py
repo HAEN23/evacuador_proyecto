@@ -27,7 +27,7 @@ from typing import Final, Optional
 
 from ..config import NOMBRE_SISTEMA
 from ..io_csv import cargar_csv
-from ..genetico import Grupo, ParametrosAG, ResultadoAG
+from ..genetico import Configuracion, Grupo, ParametrosAG, ResultadoAG
 from ..modelos import Escenario, Resultado
 from ..ucs import buscar_ucs
 from .dialogos import guardar_escenario_como
@@ -438,15 +438,19 @@ class AplicacionEvacuacion:
                          "y ejecute el algoritmo (F5).")
 
     def mostrar_resultado_ag(self, escenario: Escenario, grupos: list[Grupo],
-                             params: ParametrosAG, resultado: ResultadoAG) -> None:
-        """Muestra las tres mejores ubicaciones de salidas, gráficas y tablas del AG."""
+                             params: ParametrosAG, resultado: ResultadoAG,
+                             manual: Optional[Configuracion] = None) -> None:
+        """Muestra las tres mejores ubicaciones de salidas, gráficas y tablas del AG.
+
+        ``manual`` es la evaluación de las salidas colocadas en el editor, si las hay.
+        """
         if self._vista_resultado_ag is not None:
             self._vista_resultado_ag.destroy()
         self._vista_resultado_ag = VistaResultadoAG(
             self._area, escenario, grupos, params, resultado,
             al_volver=self.mostrar_inicio, al_editar=self.mostrar_editor_ag,
             al_guardar=lambda: self._guardar_resultado(escenario, "escenario_ag.csv"),
-            al_guardar_grupos=self._editor_ag.guardar_grupos)
+            al_guardar_grupos=self._editor_ag.guardar_grupos, manual=manual)
         self._vista_resultado_ag.configure(padding=24)
         self._mostrar_vista(self._vista_resultado_ag, compacto=True)
 

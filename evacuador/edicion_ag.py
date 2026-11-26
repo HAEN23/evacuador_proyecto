@@ -1,18 +1,24 @@
-"""Lógica del editor del AG: el escenario más los grupos de personas.
+"""Lógica del editor del AG: el escenario, los grupos de personas y las salidas.
 
 ``DisenoAG`` extiende ``DisenoEscenario`` con un catálogo de grupos
-(celda -> tamaño). No importa ``tkinter``: el editor gráfico solo lo dibuja y
-le pasa los clics, y las pruebas lo ejercitan directamente.
+(celda -> tamaño) y permite varias salidas, que se pueden colocar a mano o
+generar al azar. El AG decide sus propias salidas; las del editor sirven para
+compararlas con las del AG y se guardan en la cabecera ``goal=`` del CSV.
 
-El AG no usa el inicio ni las salidas del escenario (él decide dónde van las
-salidas), pero el CSV los necesita en su cabecera. Si el diseño no los tiene,
-se usan la primera y la última celda transitable.
+Como en el AG, una salida solo puede ir en una celda libre (valor 1).
+
+No importa ``tkinter``: el editor gráfico solo lo dibuja y le pasa los clics,
+y las pruebas lo ejercitan directamente. El CSV necesita inicio y salida en
+su cabecera; si el diseño no los tiene se usan la primera y la última celda
+transitable.
 """
 from __future__ import annotations
 
-from .config import BLOQUEADA, NIVEL_HUMO_DEFECTO
+import random
+
+from .config import BLOQUEADA, COSTO_MIN, NIVEL_HUMO_DEFECTO
 from .edicion import DisenoEscenario, DisenoInvalido, Herramienta
-from .genetico import Grupo
+from .genetico import Grupo, decodificar, reparar
 from .modelos import Escenario, Posicion
 
 TAMANO_GRUPO_DEFECTO = 4
@@ -29,17 +35,23 @@ class DisenoAG(DisenoEscenario):
     def nueva(self, filas: int, columnas: int) -> None:
         super().nueva(filas, columnas)
         self.grupos = {}
+        self.salidas = []
 
     def restaurar(self) -> None:
-        """Devuelve todas las celdas a libres y quita los grupos."""
+        """Devuelve todas las celdas a libres y quita grupos y salidas."""
         super().restaurar()
         self.grupos = {}
+        self.salidas = []
 
     def cargar(self, esc: Escenario) -> None:
-        """Carga un escenario y conserva los grupos que sigan siendo válidos."""
+        """Carga un escenario y conserva los grupos que sigan siendo válidos.
+
+        Las salidas del CSV que no estén en una celda libre se descartan.
+        """
         super().cargar(esc)
         self.grupos = {p: t for p, t in self.grupos.items()
                        if self.dentro(p) and self.valor(p) != BLOQUEADA}
+        self.salidas = [s for s in self.salidas if self.valor(s) == COSTO_MIN]
 
     # -- Pintura ---------------------------------------------------------------
 
@@ -49,6 +61,7 @@ class DisenoAG(DisenoEscenario):
         """Como ``DisenoEscenario.aplicar`` más la herramienta GRUPO.
 
         GRUPO coloca (o cambia el tamaño de) un grupo; una pared o BORRAR lo quitan.
+        SALIDA agrega una salida (deja la celda libre); pared, humo o BORRAR la quitan.
         """
         if not self.dentro(pos):
             return
@@ -60,6 +73,37 @@ class DisenoAG(DisenoEscenario):
         super().aplicar(herramienta, pos, nivel_humo)
         if herramienta is Herramienta.BORRAR or self.valor(pos) == BLOQUEADA:
             self.grupos.pop(pos, None)
+        if self.valor(pos) != COSTO_MIN and pos in self.salidas:
+            self.salidas.remove(pos)   # el humo invalida una salida
+
+    def _colocar_salida(self, pos: Posicion) -> None:
+        """A diferencia del editor de la v1, aquí puede haber varias salidas."""
+        self._poner(pos, COSTO_MIN)
+        if pos not in self.salidas:
+            self.salidas.append(pos)
+
+    def _quitar_marcas(self, pos: Posicion) -> None:
+        if pos == self.inicio:
+            self.inicio = None
+        if pos in self.salidas:
+            self.salidas.remove(pos)
+
+    def generar_salidas(self, k: int, d_min: int, semilla: int | None = None) -> None:
+        """Coloca k salidas al azar en celdas libres, a d_min o más entre sí.
+
+        Usa la misma decodificación y reparación que el AG.
+        Lanza ValueError si no caben k salidas con esa distancia.
+        """
+        validas = tuple((f, c) for f in range(self.filas) for c in range(self.columnas)
+                        if self.grid[f][c] == COSTO_MIN)
+        rng = random.Random(semilla)
+        genes = [rng.random() for _ in range(2 * k)]
+        posiciones = reparar(decodificar(genes, self.filas, self.columnas),
+                             validas, frozenset(validas), d_min)
+        if posiciones is None:
+            raise ValueError(f"No caben {k} salidas en celdas libres a una distancia "
+                             f"mínima de {d_min}")
+        self.salidas = sorted(posiciones)
 
     def poner_grupos(self, grupos: list[Grupo]) -> None:
         """Reemplaza los grupos. Lanza ValueError si alguno cae fuera del mapa o en un muro."""

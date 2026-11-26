@@ -48,6 +48,32 @@ class TestDisenoAG(unittest.TestCase):
         self.assertEqual(self.d.grupos, {})
         self.assertNotEqual(self.d.valor((1, 1)), BLOQUEADA)
 
+    def test_varias_salidas_solo_en_celdas_libres(self):
+        self.d.nueva(4, 5)
+        self.assertEqual(self.d.salidas, [])
+        self.d.aplicar(Herramienta.HUMO, (0, 0), nivel_humo=30)
+        self.d.aplicar(Herramienta.SALIDA, (0, 0))       # la celda queda libre
+        self.d.aplicar(Herramienta.SALIDA, (3, 4))
+        self.d.aplicar(Herramienta.SALIDA, (3, 4))       # repetir no duplica
+        self.assertEqual(self.d.salidas, [(0, 0), (3, 4)])
+        self.assertEqual(self.d.valor((0, 0)), 1)
+        self.d.aplicar(Herramienta.HUMO, (0, 0), nivel_humo=30)   # humo la quita
+        self.d.aplicar(Herramienta.BORRAR, (3, 4))
+        self.assertEqual(self.d.salidas, [])
+
+    def test_generar_salidas_al_azar(self):
+        self.d.aplicar(Herramienta.HUMO, (1, 1), nivel_humo=50)
+        self.d.generar_salidas(3, 2, semilla=4)
+        a = list(self.d.salidas)
+        self.assertEqual(len(a), 3)
+        self.assertTrue(all(self.d.valor(p) == 1 for p in a))
+        self.assertTrue(all(abs(p[0] - q[0]) + abs(p[1] - q[1]) >= 2
+                            for i, p in enumerate(a) for q in a[i + 1:]))
+        self.d.generar_salidas(3, 2, semilla=4)
+        self.assertEqual(self.d.salidas, a)               # reproducible
+        with self.assertRaisesRegex(ValueError, "No caben"):
+            self.d.generar_salidas(4, 20)
+
     def test_poner_grupos_valida(self):
         self.d.aplicar(Herramienta.BLOQUEADA, (1, 1))
         with self.assertRaisesRegex(ValueError, "fuera"):
@@ -60,7 +86,7 @@ class TestDisenoAG(unittest.TestCase):
 
     def test_a_escenario_completa_inicio_y_salida(self):
         self.d.aplicar(Herramienta.BLOQUEADA, (0, 0))   # quita el inicio
-        self.d.aplicar(Herramienta.BLOQUEADA, (3, 4))   # quita la salida
+        self.d.aplicar(Herramienta.BLOQUEADA, (3, 4))
         esc = self.d.a_escenario()
         self.assertEqual((esc.inicio, esc.metas), ((0, 1), ((3, 3),)))
 
