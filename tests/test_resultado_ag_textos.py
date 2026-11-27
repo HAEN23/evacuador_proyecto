@@ -16,7 +16,7 @@ class TestTextos(unittest.TestCase):
     def setUp(self):
         self.res = optimizar(ESC, [(1, 0, 3), (2, 2, 2)],
                              ParametrosAG(k=2, d_min=2, tam_poblacion=6, generaciones=4,
-                                          semilla=1))
+                                          semilla=1, separacion_top3=0))
 
     def test_mapa_usa_los_datos_de_cada_configuracion(self):
         from evacuador.gui.resultado_ag import texto_mapa

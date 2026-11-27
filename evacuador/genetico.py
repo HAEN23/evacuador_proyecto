@@ -59,6 +59,7 @@ class ParametrosAG:
     d_min: int = 3
     p_evac: float = 0.90      # porcentaje de personas cuyo tiempo de salida se optimiza
     ventana: int = 5          # segundos que abarca una aglomeración
+    separacion_top3: int = 3  # distancia mínima (Manhattan) para considerar distinta una configuración; 0 = sin filtro
     semilla: int | None = None
 
     def __post_init__(self) -> None:
@@ -80,6 +81,8 @@ class ParametrosAG:
             raise ValueError("p_evac debe estar en (0, 1]")
         if self.ventana < 1:
             raise ValueError("ventana debe ser al menos 1 segundo")
+        if self.separacion_top3 < 0:
+            raise ValueError("separacion_top3 no puede ser negativa")
         for nombre in ("p_cruza", "p_mut_ind", "p_mut_gen"):
             if not 0 <= getattr(self, nombre) <= 1:
                 raise ValueError(f"{nombre} debe estar en [0, 1]")
@@ -442,13 +445,32 @@ def _resumen(numero: int, poblacion: list[_Individuo]) -> Generacion:
                       sum(aptitudes) / len(aptitudes), min(aptitudes))
 
 
+def _parecidas(a: tuple[Posicion, ...], b: tuple[Posicion, ...], separacion: int) -> bool:
+    """Dos configuraciones son parecidas si cada salida de `a` está a `separacion` casillas
+    o menos (Manhattan) de alguna salida de `b`. Con separacion 0 solo lo son las idénticas."""
+    return all(any(abs(f - g) + abs(c - h) <= separacion for g, h in b) for f, c in a)
+
+
+def _elegir_top3(candidatas: list[Configuracion], separacion: int) -> list[Configuracion]:
+    """Toma las mejores configuraciones que no se parezcan a otra ya elegida."""
+    elegidas: list[Configuracion] = []
+    for cand in candidatas:
+        if all(not _parecidas(cand.salidas, e.salidas, separacion)
+               and not _parecidas(e.salidas, cand.salidas, separacion) for e in elegidas):
+            elegidas.append(cand)
+            if len(elegidas) == 3:
+                break
+    return elegidas
+
+
 def optimizar(escenario: Escenario, grupos, params: ParametrosAG = ParametrosAG()) -> ResultadoAG:
     """Busca las posiciones de k salidas con mayor aptitud.
 
     `grupos` es una lista de Grupo, (fila, col) o (fila, col, tamaño).
     Con la misma semilla y los mismos datos el resultado es idéntico.
     El historial incluye la generación 0 (población inicial) y las `generaciones`
-    siguientes. `top3` recoge las 3 mejores configuraciones distintas de toda la corrida.
+    siguientes. `top3` recoge las 3 mejores configuraciones de toda la corrida que no se parezcan
+    entre sí (ver `ParametrosAG.separacion_top3`); puede traer menos de 3 si no hay más.
     """
     rng = random.Random(params.semilla)
     problema = crear_problema(escenario, grupos, params)
@@ -474,5 +496,5 @@ def optimizar(escenario: Escenario, grupos, params: ParametrosAG = ParametrosAG(
 
     # Empates de aptitud: se desempata por las salidas para que sea determinista.
     candidatas = sorted(evaluador.cache.values(), key=lambda c: (-c.aptitud, c.salidas))
-    top3 = tuple(candidatas[:3]) or (_INVALIDA,)
+    top3 = tuple(_elegir_top3(candidatas, params.separacion_top3)) or (_INVALIDA,)
     return ResultadoAG(top3, tuple(historial), len(evaluador.cache))
