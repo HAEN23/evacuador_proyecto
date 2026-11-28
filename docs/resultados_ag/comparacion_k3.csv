@@ -1,0 +1,5 @@
+Escenario,Tamaño,k,Semillas,Evaluaciones,AG media,AG mín,AG máx,Azar media,Azar mín,Azar máx,Exhaustivo
+A. Sin humo,12x20,3,10,380.2,0.3354,0.3320,0.3365,0.3053,0.2788,0.3220,-
+B. Humo moderado,12x20,3,10,301.7,0.2755,0.2680,0.2773,0.2609,0.2529,0.2692,-
+C. Mucho humo,15x25,3,10,269.8,0.2669,0.2614,0.2693,0.2630,0.2517,0.2691,-
+D. Mapa grande,40x40,3,10,473.5,0.3596,0.3494,0.3685,0.3197,0.3082,0.3266,-

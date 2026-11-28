@@ -9,7 +9,7 @@ from . import experimentos as exp
 from . import experimentos_ag as exp_ag
 from . import visualizacion as vis
 from .generador import ConfigGenerador, generar_escenario
-from .genetico import ParametrosAG, optimizar
+from .genetico import K_PERMITIDOS, ParametrosAG, optimizar
 from .io_grupos import cargar_grupos
 from .io_csv import cargar_csv, guardar_csv
 from .ucs import buscar_ucs
@@ -57,6 +57,17 @@ def _parser() -> argparse.ArgumentParser:
     x.add_argument("--sin-exhaustivo", action="store_true",
                    help="omite la búsqueda exhaustiva (es la parte más lenta)")
     x.add_argument("--csv", metavar="ARCHIVO", help="guarda también la tabla en CSV")
+
+    a = sub.add_parser("ajuste-ag",
+                       help="prueba combinaciones de sigma y élites del AG en los escenarios A-D")
+    a.add_argument("--k", type=int, nargs="+", default=[3], choices=K_PERMITIDOS,
+                   help="números de salidas a probar (por defecto 3)")
+    a.add_argument("--sigmas", type=float, nargs="+", default=list(exp_ag.SIGMAS_AJUSTE))
+    a.add_argument("--elitismos", type=int, nargs="+", default=list(exp_ag.ELITISMOS_AJUSTE))
+    a.add_argument("--semillas", type=int, default=10, help="cuántas semillas usar")
+    a.add_argument("--desde", type=int, default=0,
+                   help="primera semilla (por defecto 0); sirve para validar con otras")
+    a.add_argument("--csv", metavar="ARCHIVO", help="guarda también la tabla en CSV")
 
     sub.add_parser("gui", help="abre la interfaz gráfica (requiere tkinter)")
     return p
@@ -118,6 +129,18 @@ def _experimentos_ag(args: argparse.Namespace) -> None:
         print(f"\nTabla guardada en {args.csv}")
 
 
+def _ajuste_ag(args: argparse.Namespace) -> None:
+    if args.semillas < 1:
+        raise ValueError("--semillas debe ser al menos 1")
+    filas = exp_ag.barrido_parametros(ks=args.k, sigmas=args.sigmas, elitismos=args.elitismos,
+                                      semillas=range(args.desde, args.desde + args.semillas))
+    print(exp_ag.ajuste_markdown(filas))
+    if args.csv:
+        with open(args.csv, "w", encoding="utf-8") as f:
+            f.write(exp_ag.ajuste_csv(filas) + "\n")
+        print(f"\nTabla guardada en {args.csv}")
+
+
 def _gui() -> None:
     # Importación perezosa: los otros comandos no requieren tkinter ni matplotlib.
     try:
@@ -160,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
             _optimizar(args)
         elif args.cmd == "experimentos-ag":
             _experimentos_ag(args)
+        elif args.cmd == "ajuste-ag":
+            _ajuste_ag(args)
         elif args.cmd == "gui":
             _gui()
         else:

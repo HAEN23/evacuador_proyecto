@@ -1,6 +1,7 @@
 """Experimentos del AG y tablas de resultados (texto y CSV).
 
 - Comparación justa AG vs salidas al azar vs búsqueda exhaustiva en los escenarios A–D.
+- Barrido de parámetros (sigma y élites) para el ajuste de la tarea 13.
 - Tablas del mejor individuo por generación y comparativa del top 3, en Markdown y CSV.
 
 No imprime ni escribe archivos: devuelve datos y texto. La salida la maneja cli.py.
@@ -147,6 +148,69 @@ def comparar_todos(params: ParametrosAG = ParametrosAG(k=2), semillas=SEMILLAS_P
     return filas
 
 
+# --- Ajuste de parámetros -----------------------------------------------------
+
+SIGMAS_AJUSTE = (0.05, 0.10, 0.20, 0.30)
+ELITISMOS_AJUSTE = (1, 2, 4)
+
+
+@dataclass(frozen=True)
+class FilaAjuste:
+    """Resultado de una combinación (escenario, k, sigma, élites) sobre varias semillas."""
+
+    nombre: str
+    k: int
+    sigma: float
+    elitismo: int
+    semillas: int
+    aptitud_media: float
+    aptitud_min: float
+    aptitud_max: float
+    evaluaciones_media: float
+    ultima_mejora_media: float        # generación media en la que mejoró por última vez
+
+
+def _ultima_mejora(resultado: ResultadoAG) -> int:
+    """Número de la última generación en la que mejoró la mejor aptitud (0 si nunca)."""
+    ultima, mejor = 0, resultado.historial[0].aptitud_mejor
+    for g in resultado.historial[1:]:
+        if g.aptitud_mejor > mejor:
+            ultima, mejor = g.numero, g.aptitud_mejor
+    return ultima
+
+
+def barrido_parametros(escenarios=None, ks=(3,), sigmas=SIGMAS_AJUSTE,
+                       elitismos=ELITISMOS_AJUSTE, semillas=SEMILLAS_POR_DEFECTO,
+                       base: ParametrosAG = ParametrosAG()) -> list[FilaAjuste]:
+    """Corre el AG con cada combinación de k, sigma y élites y cada semilla.
+
+    `escenarios` es una lista de (nombre, Escenario) o (nombre, Escenario, grupos); por
+    defecto A–D con los grupos de data/grupos_*.csv (los mismos que `generar_grupos`). Sirve para decidir sigma y élites contra la convergencia temprana:
+    una combinación es mejor si su aptitud mínima sube sin perder la máxima.
+    """
+    semillas = tuple(semillas)
+    if not semillas:
+        raise ValueError("Debe haber al menos una semilla")
+    if escenarios is None:
+        escenarios = construir_escenarios()[:4]
+    filas = []
+    for nombre, esc, *propios in escenarios:
+        grupos = (propios[0] if propios
+                  else generar_grupos(esc, GRUPOS_N, GRUPOS_TAMANO_MAX, GRUPOS_SEMILLA))
+        for k, sigma, elitismo in itertools.product(ks, sigmas, elitismos):
+            resultados = [optimizar(esc, grupos, replace(base, k=k, sigma=sigma,
+                                                         elitismo=elitismo, semilla=s))
+                          for s in semillas]
+            aptitudes = [r.mejor.aptitud for r in resultados]
+            filas.append(FilaAjuste(
+                nombre=nombre, k=k, sigma=sigma, elitismo=elitismo, semillas=len(semillas),
+                aptitud_media=statistics.mean(aptitudes), aptitud_min=min(aptitudes),
+                aptitud_max=max(aptitudes),
+                evaluaciones_media=statistics.mean(r.evaluaciones for r in resultados),
+                ultima_mejora_media=statistics.mean(_ultima_mejora(r) for r in resultados)))
+    return filas
+
+
 # --- Tablas ------------------------------------------------------------------
 
 def _markdown(encabezado: tuple[str, ...], filas: list[tuple[str, ...]]) -> str:
@@ -232,3 +296,21 @@ def top3_markdown(resultado: ResultadoAG) -> str:
 
 def top3_csv(resultado: ResultadoAG) -> str:
     return _csv(_ENC_TOP3, _filas_top3(resultado))
+
+
+_ENC_AJUSTE = ("Escenario", "k", "Sigma", "Élites", "Semillas", "Aptitud media", "Aptitud mín",
+               "Aptitud máx", "Evaluaciones", "Última mejora (gen)")
+
+
+def _celdas_ajuste(f: FilaAjuste) -> tuple[str, ...]:
+    return (f.nombre, str(f.k), f"{f.sigma:.2f}", str(f.elitismo), str(f.semillas),
+            f"{f.aptitud_media:.4f}", f"{f.aptitud_min:.4f}", f"{f.aptitud_max:.4f}",
+            f"{f.evaluaciones_media:.1f}", f"{f.ultima_mejora_media:.1f}")
+
+
+def ajuste_markdown(filas: list[FilaAjuste]) -> str:
+    return _markdown(_ENC_AJUSTE, [_celdas_ajuste(f) for f in filas])
+
+
+def ajuste_csv(filas: list[FilaAjuste]) -> str:
+    return _csv(_ENC_AJUSTE, [_celdas_ajuste(f) for f in filas])
