@@ -57,7 +57,7 @@ class ParametrosAG:
     p_cruza: float = 0.80
     p_mut_ind: float = 0.30
     p_mut_gen: float = 0.25
-    sigma: float = 0.10
+    sigma: float = 0.30
     torneo: int = 3
     elitismo: int = 2
     generaciones: int = 100
@@ -121,7 +121,7 @@ Cada quien trabaja en su rama (`edy-ag`, `heber-ag`) y toca solo sus archivos.
 | 10 | Gráfica de aptitud (mejor, promedio, peor) y tabla del mejor por generación | Heber | `evacuador/visualizacion_ag.py`, `evacuador/experimentos_ag.py` (tabla) | Hecho |
 | 11 | Mapa con las tres mejores configuraciones, tabla comparativa y curva de evacuación | Heber | `evacuador/visualizacion_ag.py` | Hecho |
 | 12 | Exportar resultados a CSV | Heber | `evacuador/experimentos_ag.py` | Hecho |
-| 13 | Experimentos y ajuste de parámetros en mapas A–E | Ambos | `evacuador/experimentos_ag.py` | Pendiente |
+| 13 | Experimentos y ajuste de parámetros en mapas A–E | Ambos | `evacuador/experimentos_ag.py`, `docs/RESULTADOS_AG.md` | Hecho |
 | 14 | Informe final | Ambos | `docs/` | Pendiente |
 
 Archivos compartidos (`cli.py`, `tests/test_arquitectura.py`): los toca una sola persona y se avisa. Agregar `genetico.py` a `test_arquitectura.py` (el núcleo no importa tkinter) ya lo hizo Edy.
@@ -171,3 +171,4 @@ Anotar aquí cualquier cambio respecto a la propuesta (fecha, qué y por qué).
 - 2026-11-25: las tablas (mejor por generación y comparativa del top 3) y su exportación a CSV viven en `experimentos_ag.py`, sin matplotlib; `visualizacion_ag.py` solo dibuja. El CLI imprime y, con `--salida`, escribe `historial.csv`, `top3.csv` y (con `--grafico`) tres PNG.
 - 2026-11-25: comparación AG vs azar vs exhaustivo (`python3 -m evacuador experimentos-ag`): 10 semillas, el azar recibe el mismo número de configuraciones distintas que evaluó el AG, y la exhaustiva se rechaza con más de 50 000 combinaciones (por eso usa k = 2 por defecto y en D queda "-"). El escenario E se omite: es 4x4 y casi no tiene celdas para colocar k salidas con d_min = 3.
 - 2026-11-26: el top 3 ya no admite configuraciones parecidas: una candidata se descarta si cada una de sus salidas está a `separacion_top3` casillas (Manhattan, 3 por defecto) o menos de alguna salida de una ya elegida. Con 0 solo se piden configuraciones distintas. Puede devolver menos de 3. Queda pendiente el ajuste de sigma y élites (tarea 13).
+- 2026-11-27: ajuste de parámetros (tarea 13, `docs/RESULTADOS_AG.md`). La sigma de la mutación pasa de 0.10 a 0.30: con k = 3 y 4 mejora la media y sobre todo la peor semilla (validado con 20 semillas distintas), con k = 2 queda igual, a cambio de evaluar entre 20 % y 35 % más configuraciones. Las élites se quedan en 2 porque no cambian la media. Nuevo subcomando `ajuste-ag`.

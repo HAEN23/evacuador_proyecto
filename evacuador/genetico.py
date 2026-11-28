@@ -51,7 +51,7 @@ class ParametrosAG:
     p_cruza: float = 0.80
     p_mut_ind: float = 0.30
     p_mut_gen: float = 0.25
-    sigma: float = 0.10
+    sigma: float = 0.30       # ajustado en la tarea 13 (antes 0.10); ver docs/PLAN_AG.md
     torneo: int = 3
     elitismo: int = 2
     generaciones: int = 100

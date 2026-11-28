@@ -127,3 +127,53 @@ class TestCliOptimizar(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAjuste(unittest.TestCase):
+    def setUp(self):
+        self.filas = x.barrido_parametros(
+            escenarios=[("Pasillo", PASILLO, GRUPO_CENTRO)], ks=(2,), sigmas=(0.10, 0.30), elitismos=(1, 2),
+            semillas=range(3), base=PARAMS)
+
+    def test_una_fila_por_combinacion(self):
+        combos = {(f.k, f.sigma, f.elitismo) for f in self.filas}
+        self.assertEqual(combos, {(2, 0.10, 1), (2, 0.10, 2), (2, 0.30, 1), (2, 0.30, 2)})
+        self.assertEqual(len(self.filas), 4)
+
+    def test_estadisticas_coherentes(self):
+        for f in self.filas:
+            self.assertEqual(f.semillas, 3)
+            self.assertLessEqual(f.aptitud_min, f.aptitud_media + 1e-12)
+            self.assertLessEqual(f.aptitud_media, f.aptitud_max + 1e-12)
+            self.assertLessEqual(f.aptitud_max, 0.5 + 1e-12)       # tope del pasillo
+            self.assertGreaterEqual(f.ultima_mejora_media, 0)
+            self.assertLessEqual(f.ultima_mejora_media, PARAMS.generaciones)
+
+    def test_es_determinista(self):
+        otra = x.barrido_parametros(
+            escenarios=[("Pasillo", PASILLO, GRUPO_CENTRO)], ks=(2,), sigmas=(0.10, 0.30), elitismos=(1, 2),
+            semillas=range(3), base=PARAMS)
+        self.assertEqual(otra, self.filas)
+
+    def test_sin_semillas_se_rechaza(self):
+        with self.assertRaises(ValueError):
+            x.barrido_parametros(escenarios=[("Pasillo", PASILLO, GRUPO_CENTRO)], semillas=[])
+
+    def test_tablas(self):
+        csv_texto = x.ajuste_csv(self.filas)
+        lineas = list(csv.reader(io.StringIO(csv_texto)))
+        self.assertEqual(len(lineas), 1 + len(self.filas))
+        self.assertEqual(lineas[0][:4], ["Escenario", "k", "Sigma", "Élites"])
+        self.assertIn("| Pasillo | 2 | 0.30 |", x.ajuste_markdown(self.filas))
+
+    def test_cli_ajuste_ag_escribe_csv(self):
+        with tempfile.TemporaryDirectory() as carpeta:
+            destino = Path(carpeta) / "ajuste.csv"
+            salida = io.StringIO()
+            with contextlib.redirect_stdout(salida):
+                codigo = cli.main(["ajuste-ag", "--k", "2", "--sigmas", "0.3",
+                                   "--elitismos", "2", "--semillas", "1", "--desde", "5",
+                                   "--csv", str(destino)])
+            self.assertEqual(codigo, 0)
+            self.assertTrue(destino.read_text(encoding="utf-8").startswith("Escenario,k,Sigma"))
+
